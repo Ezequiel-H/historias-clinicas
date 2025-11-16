@@ -27,6 +27,12 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TableContainer,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -159,7 +165,10 @@ export const ActivityFormPage: React.FC = () => {
     fieldType: '' as FieldType | '',
     required: false,
     allowMultiple: false,
+    allowCustomOptions: false,
     repeatCount: 3,
+    requireDate: false,
+    requireTime: false,
     measurementUnit: '',
     expectedMin: '',
     expectedMax: '',
@@ -167,6 +176,7 @@ export const ActivityFormPage: React.FC = () => {
     helpText: '',
   });
   const [optionsText, setOptionsText] = useState('');
+  const [options, setOptions] = useState<SelectOption[]>([]);
   const [validationRules, setValidationRules] = useState<ActivityRule[]>([]);
   const [availableActivities, setAvailableActivities] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -240,7 +250,10 @@ export const ActivityFormPage: React.FC = () => {
           fieldType: activity.fieldType,
           required: activity.required,
           allowMultiple: activity.allowMultiple || false,
+          allowCustomOptions: activity.allowCustomOptions || false,
           repeatCount: activity.repeatCount || 3,
+          requireDate: activity.requireDate || false,
+          requireTime: activity.requireTime || false,
           measurementUnit: activity.measurementUnit || '',
           expectedMin: activity.expectedMin?.toString() || '',
           expectedMax: activity.expectedMax?.toString() || '',
@@ -250,10 +263,15 @@ export const ActivityFormPage: React.FC = () => {
         
         // Cargar opciones si existen
         if (activity.options && activity.options.length > 0) {
+          setOptions(activity.options);
+          // También mantener el texto para compatibilidad
           const optionsStr = activity.options
             .map(opt => `${opt.value}|${opt.label}`)
             .join('\n');
           setOptionsText(optionsStr);
+        } else {
+          setOptions([]);
+          setOptionsText('');
         }
         
         // Cargar reglas de validación si existen
@@ -322,10 +340,37 @@ export const ActivityFormPage: React.FC = () => {
       activityData.allowMultiple = formData.allowMultiple;
       activityData.repeatCount = formData.repeatCount;
     }
+    
+    // Agregar campos de fecha y hora
+    if (formData.requireDate) {
+      activityData.requireDate = formData.requireDate;
+    }
+    if (formData.requireTime) {
+      activityData.requireTime = formData.requireTime;
+    }
+    
+    // Agregar allowCustomOptions solo para select_multiple
+    if (formData.fieldType === 'select_multiple') {
+      activityData.allowCustomOptions = formData.allowCustomOptions || false;
+    }
 
     // Parsear opciones si es campo de selección
-    if ((formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple') && optionsText) {
-      activityData.options = parseOptions(optionsText);
+    if ((formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple')) {
+      // Usar el array de opciones si está disponible, sino parsear del texto
+      if (options.length > 0) {
+        // Asegurar que value = label para facilitar la escritura de la historia clínica
+        activityData.options = options.map(opt => ({
+          ...opt,
+          value: opt.label || opt.value, // Usar label como value
+        }));
+      } else if (optionsText) {
+        const parsed = parseOptions(optionsText);
+        // Asegurar que value = label
+        activityData.options = parsed.map(opt => ({
+          ...opt,
+          value: opt.label || opt.value,
+        }));
+      }
     }
 
     // Siempre enviar reglas de validación (incluso si está vacío para limpiar las reglas existentes)
@@ -599,18 +644,130 @@ export const ActivityFormPage: React.FC = () => {
 
           {needsOptions && (
             <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Opciones Disponibles
-              </Typography>
-              <TextField
-                value={optionsText}
-                onChange={(e) => setOptionsText(e.target.value)}
-                fullWidth
-                multiline
-                rows={6}
-                placeholder="Una opción por línea. Ejemplos:&#10;&#10;Normal&#10;Anormal&#10;&#10;O con valores diferentes:&#10;bueno|Bueno&#10;regular|Regular&#10;malo|Malo"
-                helperText="Formato: 'valor|etiqueta' o solo 'texto' (se usa como valor y etiqueta)"
-              />
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="subtitle2">
+                  Opciones Disponibles
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    const newOption: SelectOption = {
+                      value: '', // Se establecerá igual a label cuando se escriba
+                      label: '',
+                      required: false,
+                      exclusive: false,
+                    };
+                    setOptions([...options, newOption]);
+                  }}
+                >
+                  Agregar Opción
+                </Button>
+              </Box>
+              
+              {options.length === 0 ? (
+                <Alert severity="info">
+                  No hay opciones configuradas. Haz clic en "Agregar Opción" para comenzar.
+                </Alert>
+              ) : (
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Opción</TableCell>
+                        <TableCell align="center">Obligatoria</TableCell>
+                        <TableCell align="center">Excluyente</TableCell>
+                        <TableCell align="center">Acciones</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {options.map((option, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <TextField
+                              size="small"
+                              value={option.label}
+                              onChange={(e) => {
+                                const updated = [...options];
+                                updated[index].label = e.target.value;
+                                // El valor será igual a la etiqueta
+                                updated[index].value = e.target.value;
+                                setOptions(updated);
+                              }}
+                              placeholder="Ej: Hipertensión"
+                              fullWidth
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Checkbox
+                              checked={option.required || false}
+                              onChange={(e) => {
+                                const updated = [...options];
+                                updated[index].required = e.target.checked;
+                                if (e.target.checked) {
+                                  updated[index].exclusive = false; // No puede ser ambas
+                                }
+                                setOptions(updated);
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Checkbox
+                              checked={option.exclusive || false}
+                              onChange={(e) => {
+                                const updated = [...options];
+                                updated[index].exclusive = e.target.checked;
+                                if (e.target.checked) {
+                                  updated[index].required = false; // No puede ser ambas
+                                }
+                                setOptions(updated);
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                const updated = options.filter((_, i) => i !== index);
+                                setOptions(updated);
+                              }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+              
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2" gutterBottom>
+                  <strong>Opción:</strong> El texto que verá el médico y que se guardará en la historia clínica (ej: "Hipertensión").
+                </Typography>
+                <Typography variant="body2" gutterBottom>
+                  <strong>Obligatoria:</strong> Esta opción debe ser seleccionada para que el paciente califique para el protocolo.
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Excluyente:</strong> Si esta opción es seleccionada, el paciente NO califica para el protocolo.
+                </Typography>
+              </Alert>
+              
+              {/* Checkbox para permitir opciones personalizadas (solo para select_multiple) */}
+              {formData.fieldType === 'select_multiple' && (
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={formData.allowCustomOptions || false}
+                      onChange={(e) => setFormData({ ...formData, allowCustomOptions: e.target.checked })}
+                    />
+                  }
+                  label="Permitir al médico agregar opciones personalizadas que no estén en la lista"
+                  sx={{ mt: 2 }}
+                />
+              )}
             </Box>
           )}
 
@@ -650,6 +807,24 @@ export const ActivityFormPage: React.FC = () => {
                   />
                 }
                 label="Permitir Múltiples Mediciones (ej: tomar PA 3 veces)"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.requireDate}
+                    onChange={(e) => setFormData({ ...formData, requireDate: e.target.checked })}
+                  />
+                }
+                label="Solicitar fecha en que se realizó la actividad"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.requireTime}
+                    onChange={(e) => setFormData({ ...formData, requireTime: e.target.checked })}
+                  />
+                }
+                label="Solicitar hora en que se realizó la actividad"
               />
             </Box>
             
@@ -761,32 +936,43 @@ export const ActivityFormPage: React.FC = () => {
             
             {(formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple') && (
               <Box>
-                {(() => {
-                  const options = parseOptions(optionsText);
-                  if (options.length === 0) {
-                    return (
-                      <Typography variant="body2" color="text.secondary" fontStyle="italic">
-                        No hay opciones configuradas aún
-                      </Typography>
-                    );
-                  }
-                  return (
-                    <Box>
-                      {options.map((opt, idx) => (
+                {options.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                    No hay opciones configuradas aún
+                  </Typography>
+                ) : (
+                  <Box>
+                    {options.map((opt, idx) => (
+                      <Box key={idx} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                         <FormControlLabel
-                          key={idx}
                           control={
                             formData.fieldType === 'select_multiple' ? 
                               <Checkbox disabled size="small" /> : 
                               <Radio disabled size="small" />
                           }
-                          label={opt.label}
-                          sx={{ display: 'block', mb: 0.5 }}
+                          label={opt.label || opt.value}
+                          sx={{ flex: 1 }}
                         />
-                      ))}
-                    </Box>
-                  );
-                })()}
+                        {opt.required && (
+                          <Chip 
+                            label="Obligatoria" 
+                            size="small" 
+                            color="success" 
+                            variant="outlined"
+                          />
+                        )}
+                        {opt.exclusive && (
+                          <Chip 
+                            label="Excluyente" 
+                            size="small" 
+                            color="error" 
+                            variant="outlined"
+                          />
+                        )}
+                      </Box>
+                    ))}
+                  </Box>
+                )}
               </Box>
             )}
             
@@ -816,6 +1002,38 @@ export const ActivityFormPage: React.FC = () => {
               <Typography variant="body2" color="text.secondary" fontStyle="italic">
                 [Tabla con múltiples filas]
               </Typography>
+            )}
+            
+            {/* Campos de fecha y hora en la vista previa */}
+            {(formData.requireDate || formData.requireTime) && (
+              <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                {formData.requireDate && (
+                  <TextField
+                    type="date"
+                    label="Fecha en que se realizó la actividad"
+                    disabled
+                    size="small"
+                    sx={{ minWidth: 200 }}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                )}
+                {formData.requireTime && (
+                  <TextField
+                    type="text"
+                    label="Hora en que se realizó la actividad"
+                    placeholder="HH:MM"
+                    disabled
+                    size="small"
+                    sx={{ minWidth: 200 }}
+                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ 
+                      maxLength: 5,
+                      pattern: '[0-9]{2}:[0-9]{2}'
+                    }}
+                    helperText="Formato: HH:MM (ej: 14:30)"
+                  />
+                )}
+              </Box>
             )}
           </Box>
           {formData.helpText && (
