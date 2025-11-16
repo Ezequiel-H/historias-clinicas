@@ -1,0 +1,119 @@
+import type { Protocol, ProtocolFormData, ApiResponse, PaginatedResponse } from '../types';
+import apiService from './api';
+
+class ProtocolService {
+  // Obtener todos los protocolos (paginado)
+  async getProtocols(page = 1, pageSize = 10, status?: string): Promise<PaginatedResponse<Protocol>> {
+    return apiService.get<PaginatedResponse<Protocol>>('/protocols', { page, pageSize, status });
+  }
+
+  // Obtener un protocolo por ID
+  async getProtocolById(id: string): Promise<ApiResponse<Protocol>> {
+    return apiService.get<ApiResponse<Protocol>>(`/protocols/${id}`);
+  }
+
+  // Crear nuevo protocolo
+  async createProtocol(data: ProtocolFormData): Promise<ApiResponse<Protocol>> {
+    return apiService.post<ApiResponse<Protocol>>('/protocols', data);
+  }
+
+  // Actualizar protocolo existente
+  async updateProtocol(id: string, data: Partial<ProtocolFormData>): Promise<ApiResponse<Protocol>> {
+    return apiService.put<ApiResponse<Protocol>>(`/protocols/${id}`, data);
+  }
+
+  // Eliminar protocolo
+  async deleteProtocol(id: string): Promise<ApiResponse<null>> {
+    return apiService.delete<ApiResponse<null>>(`/protocols/${id}`);
+  }
+
+  // Extraer datos de documento de protocolo (usando IA)
+  async extractProtocolData(_file: File, onProgress?: (progress: number) => void): Promise<ApiResponse<Partial<Protocol>>> {
+    // TODO: Conectar con la API real que usa IA para extraer datos
+    // return apiService.uploadFile<ApiResponse<Partial<Protocol>>>('/protocols/extract', file, onProgress);
+    
+    // Mock temporal
+    return new Promise((resolve) => {
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += 10;
+        if (onProgress) onProgress(progress);
+        if (progress >= 100) {
+          clearInterval(interval);
+          resolve({
+            success: true,
+            data: {
+              name: 'Protocolo extraído del documento',
+              code: 'EXT-' + Date.now(),
+              sponsor: 'Sponsor extraído',
+              description: 'Descripción extraída automáticamente del documento mediante IA',
+              status: 'draft',
+            },
+            message: 'Datos extraídos exitosamente. Por favor revise y ajuste si es necesario.',
+          });
+        }
+      }, 200);
+    });
+  }
+
+  // ==========================================
+  // MÉTODOS PARA VISITAS
+  // ==========================================
+
+  // Agregar visita a protocolo
+  async addVisit(protocolId: string, visitData: any): Promise<ApiResponse<Protocol>> {
+    return apiService.post<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits`, visitData);
+  }
+
+  // Actualizar visita
+  async updateVisit(protocolId: string, visitId: string, visitData: any): Promise<ApiResponse<Protocol>> {
+    return apiService.put<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits/${visitId}`, visitData);
+  }
+
+  // Eliminar visita
+  async deleteVisit(protocolId: string, visitId: string): Promise<ApiResponse<Protocol>> {
+    return apiService.delete<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits/${visitId}`);
+  }
+
+  // ==========================================
+  // MÉTODOS PARA ACTIVIDADES
+  // ==========================================
+
+  // Agregar actividad a visita
+  async addActivity(protocolId: string, visitId: string, activityData: any): Promise<ApiResponse<Protocol>> {
+    return apiService.post<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits/${visitId}/activities`, activityData);
+  }
+
+  // Actualizar actividad
+  async updateActivity(protocolId: string, visitId: string, activityId: string, activityData: any): Promise<ApiResponse<Protocol>> {
+    return apiService.put<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits/${visitId}/activities/${activityId}`, activityData);
+  }
+
+  // Eliminar actividad
+  async deleteActivity(protocolId: string, visitId: string, activityId: string): Promise<ApiResponse<Protocol>> {
+    return apiService.delete<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits/${visitId}/activities/${activityId}`);
+  }
+
+  // ==========================================
+  // MÉTODOS PARA REGLAS CLÍNICAS
+  // ==========================================
+
+  // Agregar regla clínica
+  async addClinicalRule(protocolId: string, ruleData: any): Promise<ApiResponse<Protocol>> {
+    return apiService.post<ApiResponse<Protocol>>(`/protocols/${protocolId}/clinical-rules`, ruleData);
+  }
+
+  // Actualizar regla clínica
+  async updateClinicalRule(protocolId: string, ruleId: string, ruleData: any): Promise<ApiResponse<Protocol>> {
+    return apiService.put<ApiResponse<Protocol>>(`/protocols/${protocolId}/clinical-rules/${ruleId}`, ruleData);
+  }
+
+  // Eliminar regla clínica
+  async deleteClinicalRule(protocolId: string, ruleId: string): Promise<ApiResponse<Protocol>> {
+    return apiService.delete<ApiResponse<Protocol>>(`/protocols/${protocolId}/clinical-rules/${ruleId}`);
+  }
+}
+
+export const protocolService = new ProtocolService();
+export default protocolService;
+

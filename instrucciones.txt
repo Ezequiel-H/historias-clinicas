@@ -1,0 +1,30 @@
+Objetivo General
+Diseñar e implementar un sistema de soporte para la escritura de historias clínicas en estudios de investigación clínica, minimizando errores derivados de distracciones o desconocimiento de los lineamientos de los protocolos.
+El sistema permitirá centralizar la información de los protocolos, asistir a los médicos durante la carga de visitas, generar contenido de relleno único para cada historia clínica con inteligencia artificial, y facilitar la descarga de documentos listos para impresión. No se almacenará información sensible de pacientes, asegurando confidencialidad y privacidad en cada uso.
+
+FASE 1 – DASHBOARD DE ADMINISTRACIÓN DE PROTOCOLOS
+Desarrollo de un panel administrativo para la carga, edición y consulta de protocolos de estudios clínicos. Esta herramienta permitirá estructurar y digitalizar la información contenida en los documentos actuales del centro, facilitando su reutilización y estandarización.
+Extracción automatizada de datos a partir de los documentos de protocolo ya existentes (sistemáticas o documentación enviada por las farmacéuticas).
+Carga de información estructurada: visitas previstas, actividades específicas, unidades de medida, límites esperados de valores clínicos, y otras condiciones requeridas.
+Configuración de reglas clínicas: validaciones automáticas según los parámetros establecidos (por ejemplo, presión arterial dentro de ciertos rangos definidos).
+Definición de frecuencia, número de mediciones y separación entre controles.
+Posibilidad de revisar y modificar los datos extraídos automáticamente, permitiendo al equipo médico realizar ajustes cuando haya discrepancias entre el protocolo original y el contenido interpretado por el sistema.
+Acceso remoto al panel desde cualquier computadora autorizada, permitiendo mantener actualizados los protocolos en todo momento.
+
+FASE 2 – INTERFAZ DE CARGA DE VISITAS
+Sistema de login con usuario y contraseña para médicos.
+Carga guiada de visitas: presenciales, telefónicas o no programadas.
+Señalización automatizada aleatoria o manual de participación de la investigadora principal.
+Revisión paso a paso para asegurar cumplimiento del protocolo cargado.
+
+FASE 3 – GENERACIÓN DE TEXTO CON INTELIGENCIA ARTIFICIAL
+Generación de texto complementario automático para cada historia clínica, asegurando que cada documento sea único.
+Generación sin almacenamiento: el texto se genera, visualiza y descarga, sin que se guarden datos de pacientes.
+
+FASE 4 – DESCARGA DE DOCUMENTOS
+Generación de documento PDF membretado, listo para impresión.
+Tachado de espacios en blanco en las hojas.
+Sellado y firmado con firma electrónica de los médicos.
+Espacios reservados para notas manuscritas o aclaraciones clínicas.
+Formato estandarizado de salida para facilitar integración con procedimientos del centro.
+Descarga de archivo con respuestas para permitir la carga nuevamente de esta información para poder editarla.

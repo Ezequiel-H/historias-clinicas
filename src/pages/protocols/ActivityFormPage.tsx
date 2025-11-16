@@ -1,0 +1,1269 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  IconButton,
+  TextField,
+  FormControlLabel,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Checkbox,
+  Radio,
+  Alert,
+  Divider,
+  Card,
+  CardContent,
+  CardActionArea,
+  Chip,
+  CircularProgress,
+  Autocomplete,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar,
+} from '@mui/material';
+import {
+  ArrowBack as BackIcon,
+  Save as SaveIcon,
+  TextFields as TextIcon,
+  Numbers as NumberIcon,
+  ToggleOn as ToggleIcon,
+  CalendarToday as DateIcon,
+  AttachFile as FileIcon,
+  TableChart as TableIcon,
+  CheckBox as CheckboxIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Warning as WarningIcon,
+  Error as ErrorIcon,
+  CheckCircle as CheckCircleIcon,
+  Visibility as VisibilityIcon,
+  Code as CodeIcon,
+} from '@mui/icons-material';
+import type { FieldType, SelectOption, ActivityRule } from '../../types';
+import protocolService from '../../services/protocolService';
+
+const FIELD_TYPES = [
+  {
+    value: 'text_short' as FieldType,
+    label: 'Texto Corto',
+    description: 'Campo de texto de una línea',
+    icon: <TextIcon />,
+    color: '#1976d2',
+  },
+  {
+    value: 'text_long' as FieldType,
+    label: 'Texto Largo',
+    description: 'Área de texto multilínea (observaciones)',
+    icon: <TextIcon />,
+    color: '#1565c0',
+  },
+  {
+    value: 'number_simple' as FieldType,
+    label: 'Número Simple',
+    description: 'Campo numérico (peso, temperatura)',
+    icon: <NumberIcon />,
+    color: '#2e7d32',
+  },
+  {
+    value: 'number_range' as FieldType,
+    label: 'Número con Rango',
+    description: 'Número con validación mín/máx',
+    icon: <NumberIcon />,
+    color: '#388e3c',
+  },
+  {
+    value: 'number_compound' as FieldType,
+    label: 'Número Compuesto',
+    description: 'Ej: Presión (Sistólica/Diastólica)',
+    icon: <NumberIcon />,
+    color: '#43a047',
+  },
+  {
+    value: 'select_single' as FieldType,
+    label: 'Selección Única',
+    description: 'Lista de opciones (elegir una)',
+    icon: <CheckboxIcon />,
+    color: '#7b1fa2',
+  },
+  {
+    value: 'select_multiple' as FieldType,
+    label: 'Selección Múltiple',
+    description: 'Lista de opciones (elegir varias)',
+    icon: <CheckboxIcon />,
+    color: '#8e24aa',
+  },
+  {
+    value: 'boolean' as FieldType,
+    label: 'Sí/No',
+    description: 'Campo booleano simple',
+    icon: <ToggleIcon />,
+    color: '#f57c00',
+  },
+  {
+    value: 'date' as FieldType,
+    label: 'Fecha',
+    description: 'Selector de fecha',
+    icon: <DateIcon />,
+    color: '#0288d1',
+  },
+  {
+    value: 'time' as FieldType,
+    label: 'Hora',
+    description: 'Selector de hora',
+    icon: <DateIcon />,
+    color: '#0097a7',
+  },
+  {
+    value: 'datetime' as FieldType,
+    label: 'Fecha y Hora',
+    description: 'Selector de fecha y hora',
+    icon: <DateIcon />,
+    color: '#00acc1',
+  },
+  {
+    value: 'file' as FieldType,
+    label: 'Archivo Adjunto',
+    description: 'Subir PDF, imagen, etc.',
+    icon: <FileIcon />,
+    color: '#d32f2f',
+  },
+  {
+    value: 'table' as FieldType,
+    label: 'Tabla Repetible',
+    description: 'Tabla con múltiples filas',
+    icon: <TableIcon />,
+    color: '#455a64',
+  },
+];
+
+export const ActivityFormPage: React.FC = () => {
+  const { protocolId, visitId, activityId } = useParams<{ 
+    protocolId: string; 
+    visitId: string; 
+    activityId: string;
+  }>();
+  const navigate = useNavigate();
+  const isEditMode = activityId !== 'new';
+
+  const [step, setStep] = useState<'type' | 'config'>(isEditMode ? 'config' : 'type');
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    fieldType: '' as FieldType | '',
+    required: false,
+    allowMultiple: false,
+    repeatCount: 3,
+    measurementUnit: '',
+    expectedMin: '',
+    expectedMax: '',
+    decimalPlaces: 2,
+    helpText: '',
+  });
+  const [optionsText, setOptionsText] = useState('');
+  const [validationRules, setValidationRules] = useState<ActivityRule[]>([]);
+  const [availableActivities, setAvailableActivities] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingData, setLoadingData] = useState(false);
+  const [error, setError] = useState('');
+  const [showValuesDialog, setShowValuesDialog] = useState(false);
+  const [validatedValues, setValidatedValues] = useState<any>(null);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+
+  const selectedFieldType = FIELD_TYPES.find(ft => ft.value === formData.fieldType);
+
+  useEffect(() => {
+    if (isEditMode && protocolId && visitId && activityId) {
+      loadActivityData();
+    } else if (!isEditMode && protocolId && visitId) {
+      // En modo creación, también cargar las actividades disponibles
+      loadAvailableActivities();
+    }
+  }, [isEditMode, protocolId, visitId, activityId]);
+
+  const loadAvailableActivities = async () => {
+    try {
+      const response = await protocolService.getProtocolById(protocolId!);
+      const protocol = response.data;
+      const visit = protocol.visits.find((v) => v.id === visitId);
+      
+      if (visit && visit.activities) {
+        // Solo incluir actividades con tipos de campo numéricos
+        const numericFieldTypes = ['number_simple', 'number_range', 'number_compound'];
+        const numericActivities = visit.activities
+          .filter((a) => numericFieldTypes.includes(a.fieldType))
+          .map((a) => a.name);
+        setAvailableActivities(numericActivities);
+      }
+    } catch (err) {
+      console.error('Error al cargar actividades:', err);
+    }
+  };
+
+  const loadActivityData = async () => {
+    try {
+      setLoadingData(true);
+      setError('');
+      
+      // Cargar el protocolo completo para obtener los datos de la actividad
+      const response = await protocolService.getProtocolById(protocolId!);
+      const protocol = response.data;
+      
+      // Buscar la visita
+      const visit = protocol.visits.find((v) => v.id === visitId);
+      
+      if (!visit) {
+        setError('Visita no encontrada');
+        return;
+      }
+      
+      // Cargar lista de actividades disponibles (excluyendo la actual, solo numéricas)
+      const numericFieldTypes = ['number_simple', 'number_range', 'number_compound'];
+      const otherActivities = visit.activities
+        ?.filter((a) => a.id !== activityId && numericFieldTypes.includes(a.fieldType))
+        .map((a) => a.name) || [];
+      setAvailableActivities(otherActivities);
+      
+      // Buscar la actividad
+      const activity = visit.activities?.find((a) => a.id === activityId);
+      
+      if (activity) {
+        setFormData({
+          name: activity.name,
+          description: activity.description || '',
+          fieldType: activity.fieldType,
+          required: activity.required,
+          allowMultiple: activity.allowMultiple || false,
+          repeatCount: activity.repeatCount || 3,
+          measurementUnit: activity.measurementUnit || '',
+          expectedMin: activity.expectedMin?.toString() || '',
+          expectedMax: activity.expectedMax?.toString() || '',
+          decimalPlaces: activity.decimalPlaces ?? 2,
+          helpText: activity.helpText || '',
+        });
+        
+        // Cargar opciones si existen
+        if (activity.options && activity.options.length > 0) {
+          const optionsStr = activity.options
+            .map(opt => `${opt.value}|${opt.label}`)
+            .join('\n');
+          setOptionsText(optionsStr);
+        }
+        
+        // Cargar reglas de validación si existen
+        if (activity.validationRules && activity.validationRules.length > 0) {
+          setValidationRules(activity.validationRules);
+        }
+      } else {
+        setError('Actividad no encontrada');
+      }
+    } catch (err) {
+      console.error('Error al cargar actividad:', err);
+      setError('Error al cargar los datos de la actividad');
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  const handleSelectType = (type: FieldType) => {
+    setFormData({ ...formData, fieldType: type });
+    setStep('config');
+  };
+
+  const parseOptions = (text: string): SelectOption[] => {
+    return text
+      .split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        const [value, label] = line.split('|').map(s => s.trim());
+        return {
+          value: value || label,
+          label: label || value,
+        };
+      });
+  };
+
+  const buildActivityData = () => {
+    const activityData: any = {
+      name: formData.name.trim(),
+      description: formData.description?.trim() || '',
+      fieldType: formData.fieldType,
+      required: formData.required,
+      order: 1, // El backend asignará el orden correcto
+    };
+
+    // Agregar configuraciones opcionales
+    if (formData.measurementUnit) {
+      activityData.measurementUnit = formData.measurementUnit;
+    }
+    if (formData.expectedMin) {
+      activityData.expectedMin = parseFloat(formData.expectedMin);
+    }
+    if (formData.expectedMax) {
+      activityData.expectedMax = parseFloat(formData.expectedMax);
+    }
+    
+    // Agregar decimales para campos numéricos
+    const numericTypes = ['number_simple', 'number_range', 'number_compound'];
+    if (numericTypes.includes(formData.fieldType)) {
+      activityData.decimalPlaces = formData.decimalPlaces;
+    }
+    
+    if (formData.helpText) {
+      activityData.helpText = formData.helpText;
+    }
+    if (formData.allowMultiple) {
+      activityData.allowMultiple = formData.allowMultiple;
+      activityData.repeatCount = formData.repeatCount;
+    }
+
+    // Parsear opciones si es campo de selección
+    if ((formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple') && optionsText) {
+      activityData.options = parseOptions(optionsText);
+    }
+
+    // Siempre enviar reglas de validación (incluso si está vacío para limpiar las reglas existentes)
+    activityData.validationRules = validationRules;
+
+    return activityData;
+  };
+
+  const handleValidateAndShow = () => {
+    if (!formData.name || !formData.fieldType) {
+      setError('El nombre y el tipo de campo son obligatorios');
+      return;
+    }
+
+    // Validación pasó, construir el objeto y mostrar toast (el diálogo se abre con el botón)
+    const activityData = buildActivityData();
+    setValidatedValues(activityData);
+    setShowSuccessToast(true);
+    setError('');
+  };
+
+  const handleSave = async () => {
+    if (!formData.name || !formData.fieldType) {
+      setError('El nombre y el tipo de campo son obligatorios');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+
+      const activityData = buildActivityData();
+
+      if (isEditMode && activityId) {
+        // Actualizar actividad existente
+        await protocolService.updateActivity(protocolId!, visitId!, activityId, activityData);
+      } else {
+        // Crear nueva actividad
+        await protocolService.addActivity(protocolId!, visitId!, activityData);
+      }
+
+      // Volver a la configuración de la visita
+      navigate(`/protocols/${protocolId}/visits/${visitId}/edit`);
+    } catch (err) {
+      console.error('Error al guardar actividad:', err);
+      setError('Error al guardar el campo. Por favor intenta nuevamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addValidationRule = () => {
+    const newRule: ActivityRule = {
+      name: '',
+      condition: 'min',
+      severity: 'warning',
+      message: '',
+      isActive: true,
+      formulaOperator: '>',
+    };
+    setValidationRules([...validationRules, newRule]);
+  };
+
+  const updateValidationRule = (index: number, updates: Partial<ActivityRule>) => {
+    const updated = [...validationRules];
+    updated[index] = { ...updated[index], ...updates };
+    setValidationRules(updated);
+  };
+
+  const deleteValidationRule = (index: number) => {
+    setValidationRules(validationRules.filter((_, i) => i !== index));
+  };
+
+  const needsUnit = ['number_simple', 'number_range'].includes(formData.fieldType);
+  const needsRange = formData.fieldType === 'number_range';
+  const needsOptions = ['select_single', 'select_multiple'].includes(formData.fieldType);
+
+  if (loadingData) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (step === 'type') {
+    return (
+      <Box>
+        <Box display="flex" alignItems="center" gap={2} mb={3}>
+          <IconButton onClick={() => navigate(`/protocols/${protocolId}/visits/${visitId}/edit`)}>
+            <BackIcon />
+          </IconButton>
+          <Typography variant="h4" fontWeight="bold">
+            Seleccioná el Tipo de Campo
+          </Typography>
+        </Box>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+            {error}
+          </Alert>
+        )}
+
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Elegí el tipo de campo/pregunta que querés agregar a esta visita
+        </Alert>
+
+        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' } }}>
+          {FIELD_TYPES.map((fieldType) => (
+            <Card key={fieldType.value} sx={{ height: '100%' }}>
+              <CardActionArea 
+                onClick={() => handleSelectType(fieldType.value)}
+                sx={{ height: '100%', p: 2 }}
+              >
+                <CardContent>
+                  <Box display="flex" alignItems="center" gap={2} mb={1}>
+                    <Box 
+                      sx={{ 
+                        color: fieldType.color, 
+                        bgcolor: `${fieldType.color}20`,
+                        p: 1,
+                        borderRadius: 1,
+                        display: 'flex',
+                      }}
+                    >
+                      {fieldType.icon}
+                    </Box>
+                    <Typography variant="h6" component="div">
+                      {fieldType.label}
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    {fieldType.description}
+                  </Typography>
+                </CardContent>
+              </CardActionArea>
+            </Card>
+          ))}
+        </Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      {/* Header */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Box display="flex" alignItems="center" gap={2}>
+          <IconButton onClick={() => step === 'config' && !isEditMode ? setStep('type') : navigate(`/protocols/${protocolId}/visits/${visitId}/edit`)}>
+            <BackIcon />
+          </IconButton>
+          <Box>
+            <Typography variant="h4" fontWeight="bold">
+              {isEditMode ? 'Editar' : 'Nuevo'} Campo
+            </Typography>
+            {selectedFieldType && (
+              <Chip 
+                label={selectedFieldType.label} 
+                size="small" 
+                sx={{ mt: 1 }}
+                icon={selectedFieldType.icon}
+              />
+            )}
+          </Box>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+          onClick={handleSave}
+          disabled={!formData.name || !formData.fieldType || loading}
+          size="large"
+        >
+          {loading ? 'Guardando...' : 'Guardar Campo'}
+        </Button>
+      </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
+
+      {/* Formulario de configuración */}
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Configuración del Campo
+        </Typography>
+
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, mt: 3 }}>
+          {/* Información básica */}
+          <TextField
+            label="Nombre del Campo / Pregunta"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            fullWidth
+            required
+            placeholder="Ej: Presión Arterial, ¿Tuvo eventos adversos?"
+            helperText="Este es el texto que verá el médico"
+          />
+
+          <TextField
+            label="Instrucciones para la IA (Opcional)"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            fullWidth
+            multiline
+            rows={3}
+            placeholder="Instrucciones para la IA que procesará las respuestas y escribirá la historia clínica. Ej: 'Si el valor es mayor a 150, mencionar riesgo cardiovascular'"
+            helperText="Este texto será usado por la IA para interpretar y documentar las respuestas en la historia clínica"
+          />
+
+          <Divider />
+
+          {/* Configuraciones específicas */}
+          {needsUnit && (
+            <TextField
+              label="Unidad de Medida"
+              value={formData.measurementUnit}
+              onChange={(e) => setFormData({ ...formData, measurementUnit: e.target.value })}
+              fullWidth
+              placeholder="Ej: mmHg, kg, °C, cm"
+              helperText="Opcional: unidad que se mostrará junto al campo"
+            />
+          )}
+
+          {needsUnit && (
+            <TextField
+              label="Cantidad de Decimales"
+              type="number"
+              value={formData.decimalPlaces}
+              onChange={(e) => {
+                const value = parseInt(e.target.value);
+                if (!isNaN(value) && value >= 0 && value <= 10) {
+                  setFormData({ ...formData, decimalPlaces: value });
+                }
+              }}
+              fullWidth
+              inputProps={{ min: 0, max: 10, step: 1 }}
+              helperText="Los valores se formatearán automáticamente con esta cantidad de decimales (0-10)"
+            />
+          )}
+
+          {needsRange && (
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Rango de Valores Permitidos
+              </Typography>
+              <Box display="flex" gap={2}>
+                <TextField
+                  label="Valor Mínimo"
+                  type="number"
+                  value={formData.expectedMin}
+                  onChange={(e) => setFormData({ ...formData, expectedMin: e.target.value })}
+                  fullWidth
+                  placeholder="90"
+                />
+                <TextField
+                  label="Valor Máximo"
+                  type="number"
+                  value={formData.expectedMax}
+                  onChange={(e) => setFormData({ ...formData, expectedMax: e.target.value })}
+                  fullWidth
+                  placeholder="180"
+                />
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                El sistema validará que el valor ingresado esté dentro de este rango
+              </Typography>
+            </Box>
+          )}
+
+          {needsOptions && (
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Opciones Disponibles
+              </Typography>
+              <TextField
+                value={optionsText}
+                onChange={(e) => setOptionsText(e.target.value)}
+                fullWidth
+                multiline
+                rows={6}
+                placeholder="Una opción por línea. Ejemplos:&#10;&#10;Normal&#10;Anormal&#10;&#10;O con valores diferentes:&#10;bueno|Bueno&#10;regular|Regular&#10;malo|Malo"
+                helperText="Formato: 'valor|etiqueta' o solo 'texto' (se usa como valor y etiqueta)"
+              />
+            </Box>
+          )}
+
+          <TextField
+            label="Ayuda para el Médico (Opcional)"
+            value={formData.helpText}
+            onChange={(e) => setFormData({ ...formData, helpText: e.target.value })}
+            fullWidth
+            multiline
+            rows={2}
+            placeholder="Instrucciones o aclaraciones que verá el médico al completar este campo"
+            helperText="Este texto aparecerá como ayuda visible para el médico al completar el formulario"
+          />
+
+          <Divider />
+
+          {/* Opciones adicionales */}
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>
+              Opciones Adicionales
+            </Typography>
+            <Box display="flex" flexDirection="column" gap={1}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.required}
+                    onChange={(e) => setFormData({ ...formData, required: e.target.checked })}
+                  />
+                }
+                label="Campo Requerido (obligatorio completar)"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.allowMultiple}
+                    onChange={(e) => setFormData({ ...formData, allowMultiple: e.target.checked })}
+                  />
+                }
+                label="Permitir Múltiples Mediciones (ej: tomar PA 3 veces)"
+              />
+            </Box>
+            
+            {/* Cantidad de repeticiones - solo si allowMultiple está marcado */}
+            {formData.allowMultiple && (
+              <Box sx={{ ml: 4, mt: 1 }}>
+                <TextField
+                  label="Número de Mediciones"
+                  type="number"
+                  value={formData.repeatCount}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Permitir campo vacío mientras se escribe, pero guardar como número
+                    if (value === '') {
+                      setFormData({ ...formData, repeatCount: '' as any });
+                    } else {
+                      const num = parseInt(value);
+                      if (!isNaN(num) && num >= 1 && num <= 10) {
+                        setFormData({ ...formData, repeatCount: num });
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    // Asegurar que tenga un valor válido al salir del campo
+                    if (typeof formData.repeatCount === 'string' || formData.repeatCount < 1) {
+                      setFormData({ ...formData, repeatCount: 3 });
+                    }
+                  }}
+                  inputProps={{ min: 1, max: 10 }}
+                  sx={{ width: 200 }}
+                  helperText="¿Cuántas veces se debe repetir esta medición?"
+                />
+              </Box>
+            )}
+          </Box>
+        </Box>
+      </Paper>
+
+      {/* Vista previa */}
+      <Paper sx={{ p: 3, mt: 3, bgcolor: 'grey.50' }}>
+        <Typography variant="h6" gutterBottom>
+          Vista Previa
+        </Typography>
+        <Typography variant="body2" color="text.secondary" gutterBottom>
+          Así se verá este campo cuando el médico cargue la visita:
+        </Typography>
+        <Box sx={{ mt: 2, p: 2, bgcolor: 'white', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="subtitle1" gutterBottom>
+            {formData.name || '[Nombre del campo]'}
+            {formData.required && <span style={{ color: 'red' }}> *</span>}
+            {formData.allowMultiple && (
+              <Chip 
+                label={`Repetible (${formData.repeatCount}x)`} 
+                size="small" 
+                sx={{ ml: 1 }} 
+                color="primary"
+                variant="outlined"
+              />
+            )}
+          </Typography>
+          {formData.description && (
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              {formData.description}
+            </Typography>
+          )}
+          <Box sx={{ mt: 1 }}>
+            {/* Vista previa según el tipo de campo */}
+            {formData.fieldType === 'text_short' && (
+              <TextField
+                fullWidth
+                placeholder="Ingrese texto aquí..."
+                disabled
+                size="small"
+              />
+            )}
+            
+            {formData.fieldType === 'text_long' && (
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                placeholder="Ingrese observaciones aquí..."
+                disabled
+                size="small"
+              />
+            )}
+            
+            {(formData.fieldType === 'number_simple' || formData.fieldType === 'number_range') && (
+              <Box>
+                <TextField
+                  type="number"
+                  placeholder={(123.4).toFixed(formData.decimalPlaces)}
+                  disabled
+                  size="small"
+                  sx={{ width: 200 }}
+                  InputProps={{
+                    endAdornment: formData.measurementUnit ? (
+                      <Typography variant="body2" color="text.secondary">
+                        {formData.measurementUnit}
+                      </Typography>
+                    ) : null,
+                  }}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 2, display: 'block', mt: 0.5 }}>
+                  Decimales: {formData.decimalPlaces} {needsRange && `• Rango: ${formData.expectedMin || '?'} - ${formData.expectedMax || '?'}`}
+                </Typography>
+              </Box>
+            )}
+            
+            {(formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple') && (
+              <Box>
+                {(() => {
+                  const options = parseOptions(optionsText);
+                  if (options.length === 0) {
+                    return (
+                      <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                        No hay opciones configuradas aún
+                      </Typography>
+                    );
+                  }
+                  return (
+                    <Box>
+                      {options.map((opt, idx) => (
+                        <FormControlLabel
+                          key={idx}
+                          control={
+                            formData.fieldType === 'select_multiple' ? 
+                              <Checkbox disabled size="small" /> : 
+                              <Radio disabled size="small" />
+                          }
+                          label={opt.label}
+                          sx={{ display: 'block', mb: 0.5 }}
+                        />
+                      ))}
+                    </Box>
+                  );
+                })()}
+              </Box>
+            )}
+            
+            {formData.fieldType === 'boolean' && (
+              <FormControlLabel
+                control={<Checkbox disabled />}
+                label="Sí / Activado"
+              />
+            )}
+            
+            {(formData.fieldType === 'date' || formData.fieldType === 'time' || formData.fieldType === 'datetime') && (
+              <TextField
+                type={formData.fieldType === 'date' ? 'date' : formData.fieldType === 'time' ? 'time' : 'datetime-local'}
+                disabled
+                size="small"
+                sx={{ width: 250 }}
+              />
+            )}
+            
+            {formData.fieldType === 'file' && (
+              <Button variant="outlined" disabled size="small">
+                Seleccionar archivo...
+              </Button>
+            )}
+            
+            {formData.fieldType === 'table' && (
+              <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                [Tabla con múltiples filas]
+              </Typography>
+            )}
+          </Box>
+          {formData.helpText && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              {formData.helpText}
+            </Alert>
+          )}
+        </Box>
+      </Paper>
+
+      {/* Reglas de Validación */}
+      <Paper sx={{ p: 3, mt: 3 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h6">
+            Reglas de Validación Clínica
+          </Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={addValidationRule}
+          >
+            Agregar Regla
+          </Button>
+        </Box>
+        
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Define reglas para validar automáticamente los valores ingresados. Puedes crear alertas basadas en valores fijos o fórmulas que referencien otras actividades numéricas (peso, altura, glucosa, etc.).
+        </Alert>
+
+        {validationRules.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ py: 3 }}>
+            No hay reglas configuradas. Las reglas permiten alertar sobre valores fuera de rango o condiciones específicas.
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {validationRules.map((rule, index) => (
+              <Card key={index} variant="outlined">
+                <CardContent>
+                  <Box display="flex" gap={2} flexDirection="column">
+                    {/* Nombre y Severidad */}
+                    <Box display="flex" gap={2} alignItems="flex-start">
+                      <TextField
+                        label="Nombre de la Regla"
+                        value={rule.name}
+                        onChange={(e) => updateValidationRule(index, { name: e.target.value })}
+                        placeholder="Ej: Presión arterial alta"
+                        fullWidth
+                        size="small"
+                      />
+                      <FormControl size="small" sx={{ minWidth: 150 }}>
+                        <InputLabel>Tipo</InputLabel>
+                        <Select
+                          value={rule.severity}
+                          label="Tipo"
+                          onChange={(e) => updateValidationRule(index, { severity: e.target.value as 'warning' | 'error' })}
+                        >
+                          <MenuItem value="warning">
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <WarningIcon fontSize="small" color="warning" />
+                              Alerta
+                            </Box>
+                          </MenuItem>
+                          <MenuItem value="error">
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <ErrorIcon fontSize="small" color="error" />
+                              Error
+                            </Box>
+                          </MenuItem>
+                        </Select>
+                      </FormControl>
+                      <IconButton
+                        color="error"
+                        onClick={() => deleteValidationRule(index)}
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
+
+                    {/* Condición */}
+                    <Box display="flex" gap={2} alignItems="flex-start">
+                      <FormControl size="small" sx={{ minWidth: 200 }}>
+                        <InputLabel>Condición</InputLabel>
+                        <Select
+                          value={rule.condition}
+                          label="Condición"
+                          onChange={(e) => updateValidationRule(index, { condition: e.target.value as any })}
+                        >
+                          <MenuItem value="min">Valor mínimo</MenuItem>
+                          <MenuItem value="max">Valor máximo</MenuItem>
+                          <MenuItem value="range">Rango (mín - máx)</MenuItem>
+                          <MenuItem value="equals">Igual a</MenuItem>
+                          <MenuItem value="not_equals">Distinto de</MenuItem>
+                          <MenuItem value="formula">Fórmula personalizada</MenuItem>
+                        </Select>
+                      </FormControl>
+
+                      {/* Campos según condición */}
+                      {rule.condition === 'min' && (
+                        <TextField
+                          label="Valor Mínimo"
+                          type="number"
+                          value={rule.minValue || ''}
+                          onChange={(e) => updateValidationRule(index, { minValue: parseFloat(e.target.value) })}
+                          size="small"
+                          sx={{ width: 150 }}
+                        />
+                      )}
+
+                      {rule.condition === 'max' && (
+                        <TextField
+                          label="Valor Máximo"
+                          type="number"
+                          value={rule.maxValue || ''}
+                          onChange={(e) => updateValidationRule(index, { maxValue: parseFloat(e.target.value) })}
+                          size="small"
+                          sx={{ width: 150 }}
+                        />
+                      )}
+
+                      {rule.condition === 'range' && (
+                        <>
+                          <TextField
+                            label="Mínimo"
+                            type="number"
+                            value={rule.minValue || ''}
+                            onChange={(e) => updateValidationRule(index, { minValue: parseFloat(e.target.value) })}
+                            size="small"
+                            sx={{ width: 120 }}
+                          />
+                          <TextField
+                            label="Máximo"
+                            type="number"
+                            value={rule.maxValue || ''}
+                            onChange={(e) => updateValidationRule(index, { maxValue: parseFloat(e.target.value) })}
+                            size="small"
+                            sx={{ width: 120 }}
+                          />
+                        </>
+                      )}
+
+                      {(rule.condition === 'equals' || rule.condition === 'not_equals') && (
+                        <TextField
+                          label="Valor"
+                          value={rule.value || ''}
+                          onChange={(e) => updateValidationRule(index, { value: e.target.value })}
+                          size="small"
+                          sx={{ width: 150 }}
+                        />
+                      )}
+
+                      {rule.condition === 'formula' && (
+                        <Box sx={{ width: '100%', display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                          <FormControl size="small" sx={{ minWidth: 180 }}>
+                            <InputLabel>Comparación</InputLabel>
+                            <Select
+                              value={rule.formulaOperator || '>'}
+                              label="Comparación"
+                              onChange={(e) => updateValidationRule(index, { formulaOperator: e.target.value as any })}
+                            >
+                              <MenuItem value=">">Mayor que (&gt;)</MenuItem>
+                              <MenuItem value=">=">Mayor o igual (≥)</MenuItem>
+                              <MenuItem value="<">Menor que (&lt;)</MenuItem>
+                              <MenuItem value="<=">Menor o igual (≤)</MenuItem>
+                              <MenuItem value="==">Igual a (=)</MenuItem>
+                              <MenuItem value="!=">Distinto de (≠)</MenuItem>
+                            </Select>
+                          </FormControl>
+                          
+                          <Box sx={{ flex: 1 }}>
+                            <Autocomplete
+                            freeSolo
+                            value={null}
+                            options={availableActivities}
+                            inputValue={rule.formula || ''}
+                            onInputChange={(_, newValue, reason) => {
+                              // Solo actualizar si es por tipeo, no por selección
+                              if (reason === 'input') {
+                                updateValidationRule(index, { formula: newValue });
+                              }
+                            }}
+                            onChange={(_, newValue) => {
+                              // Cuando se selecciona una opción del autocompletado
+                              if (typeof newValue === 'string' && availableActivities.includes(newValue)) {
+                                const currentFormula = rule.formula || '';
+                                // Obtener la última palabra incompleta
+                                const words = currentFormula.split(/[\s+\-*/()\[\]]+/);
+                                const lastWord = words[words.length - 1] || '';
+                                
+                                // Reemplazar la última palabra con la variable seleccionada
+                                let newFormula = currentFormula;
+                                if (lastWord.length > 0) {
+                                  const lastIndex = currentFormula.lastIndexOf(lastWord);
+                                  newFormula = currentFormula.substring(0, lastIndex) + newValue;
+                                } else {
+                                  // Si no hay palabra, simplemente agregar
+                                  newFormula = currentFormula + (currentFormula.length > 0 ? ' ' : '') + newValue;
+                                }
+                                
+                                updateValidationRule(index, { formula: newFormula });
+                              }
+                            }}
+                            clearOnBlur={false}
+                            renderInput={(params) => (
+                              <Box>
+                                <TextField
+                                  {...params}
+                                  label="Fórmula"
+                                  placeholder="Ej: peso * 10 + altura"
+                                  size="small"
+                                  fullWidth
+                                />
+                                {availableActivities.length > 0 ? (
+                                  <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Variables numéricas disponibles:
+                                    </Typography>
+                                    {availableActivities.map((act, i) => (
+                                      <Chip 
+                                        key={i} 
+                                        label={act} 
+                                        size="small" 
+                                        sx={{ height: 18, fontSize: '0.7rem' }}
+                                        color="primary"
+                                        variant="outlined"
+                                      />
+                                    ))}
+                                  </Box>
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                    Agrega actividades numéricas (Número Simple, Número con Rango, etc.) para poder usarlas en fórmulas
+                                  </Typography>
+                                )}
+                              </Box>
+                            )}
+                            renderOption={(props, option) => {
+                              const { key, ...otherProps } = props;
+                              return (
+                                <Box 
+                                  key={key}
+                                  component="li" 
+                                  {...otherProps}
+                                  sx={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: 1,
+                                    '&:hover': { bgcolor: 'primary.light' }
+                                  }}
+                                >
+                                  <Chip 
+                                    label={option} 
+                                    size="small" 
+                                    color="primary" 
+                                    variant="outlined"
+                                  />
+                                </Box>
+                              );
+                            }}
+                            filterOptions={(options, { inputValue }) => {
+                              // Obtener la última palabra que está escribiendo
+                              const words = inputValue.split(/[\s+\-*/()\[\]]+/);
+                              const lastWord = words[words.length - 1] || '';
+                              
+                              // Si no hay texto, no mostrar sugerencias
+                              if (lastWord.length === 0) return [];
+                              
+                              // Filtrar actividades que coincidan con lo que está escribiendo
+                              return options.filter((option) =>
+                                option.toLowerCase().includes(lastWord.toLowerCase())
+                              );
+                            }}
+                          />
+                          
+                          {/* Vista previa de la fórmula parseada */}
+                          {rule.formula && (
+                            <Box sx={{ mt: 1, p: 1.5, bgcolor: 'grey.50', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                Vista previa: <strong>Esta actividad</strong> debe ser{' '}
+                                <strong>
+                                  {rule.formulaOperator === '>' && 'mayor que'}
+                                  {rule.formulaOperator === '>=' && 'mayor o igual que'}
+                                  {rule.formulaOperator === '<' && 'menor que'}
+                                  {rule.formulaOperator === '<=' && 'menor o igual que'}
+                                  {rule.formulaOperator === '==' && 'igual a'}
+                                  {rule.formulaOperator === '!=' && 'distinto de'}
+                                  {!rule.formulaOperator && 'mayor que'}
+                                </strong>:
+                              </Typography>
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+                                {rule.formula.split(/(\s+|[+\-*/()[\]])/).filter(Boolean).map((part, idx) => {
+                                  const trimmed = part.trim();
+                                  if (!trimmed) return null;
+                                  
+                                  // Es una variable reconocida?
+                                  if (availableActivities.some(act => 
+                                    trimmed.toLowerCase() === act.toLowerCase()
+                                  )) {
+                                    return (
+                                      <Chip
+                                        key={idx}
+                                        label={trimmed}
+                                        size="small"
+                                        color="success"
+                                        icon={<CheckCircleIcon />}
+                                      />
+                                    );
+                                  }
+                                  
+                                  // Es un operador?
+                                  if (['+', '-', '*', '/', '(', ')', '[', ']'].includes(trimmed)) {
+                                    return (
+                                      <Typography key={idx} component="span" sx={{ color: 'primary.main', fontWeight: 'bold', px: 0.5 }}>
+                                        {trimmed}
+                                      </Typography>
+                                    );
+                                  }
+                                  
+                                  // Es un número?
+                                  if (!isNaN(Number(trimmed))) {
+                                    return (
+                                      <Typography key={idx} component="span" sx={{ color: 'info.main', fontWeight: 'medium' }}>
+                                        {trimmed}
+                                      </Typography>
+                                    );
+                                  }
+                                  
+                                  // Texto sin reconocer
+                                  return (
+                                    <Typography key={idx} component="span" sx={{ color: 'error.main', textDecoration: 'underline wavy' }}>
+                                      {trimmed}
+                                    </Typography>
+                                  );
+                                })}
+                              </Box>
+                            </Box>
+                          )}
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
+
+                    {/* Mensaje */}
+                    <TextField
+                      label="Mensaje de Alerta"
+                      value={rule.message}
+                      onChange={(e) => updateValidationRule(index, { message: e.target.value })}
+                      placeholder="Mensaje que verá el médico cuando se active esta regla"
+                      fullWidth
+                      size="small"
+                      multiline
+                      rows={2}
+                    />
+                  </Box>
+                </CardContent>
+              </Card>
+            ))}
+          </Box>
+        )}
+      </Paper>
+
+      {/* Toast de validación exitosa */}
+      <Snackbar
+        open={showSuccessToast}
+        autoHideDuration={5000}
+        onClose={() => setShowSuccessToast(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={() => setShowSuccessToast(false)}
+          severity="success"
+          sx={{ width: '100%', minWidth: 300 }}
+          icon={<CheckCircleIcon />}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => {
+                setShowSuccessToast(false);
+                setShowValuesDialog(true);
+              }}
+              sx={{ 
+                fontWeight: 600,
+                textTransform: 'none',
+                '&:hover': {
+                  bgcolor: 'rgba(255, 255, 255, 0.1)'
+                }
+              }}
+            >
+              Ver Objeto
+            </Button>
+          }
+        >
+          Formulario válido! Todos los campos requeridos están completos.
+        </Alert>
+      </Snackbar>
+
+      {/* Dialog para mostrar valores validados */}
+      <Dialog
+        open={showValuesDialog}
+        onClose={() => setShowValuesDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <CheckCircleIcon color="success" />
+            <Typography variant="h6">Validación Exitosa</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            El formulario ha sido validado correctamente. Aquí están los valores que se guardarán:
+          </Typography>
+          <Box
+            sx={{
+              mt: 2,
+              p: 2,
+              bgcolor: 'grey.50',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'grey.300',
+              maxHeight: '60vh',
+              overflow: 'auto',
+            }}
+          >
+            <pre style={{ margin: 0, fontSize: '0.875rem', fontFamily: 'monospace' }}>
+              {validatedValues ? JSON.stringify(validatedValues, null, 2) : 'Cargando...'}
+            </pre>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowValuesDialog(false)}>
+            Cerrar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setShowValuesDialog(false);
+              handleSave();
+            }}
+            startIcon={<SaveIcon />}
+          >
+            Guardar Ahora
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
