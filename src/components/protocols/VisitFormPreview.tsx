@@ -17,15 +17,12 @@ import {
   Paper,
   Chip,
   FormGroup,
-  Snackbar,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   Send as SendIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
-  CheckCircle as CheckCircleIcon,
-  Add as AddIcon,
 } from '@mui/icons-material';
 import type { Activity, ActivityRule } from '../../types';
 
@@ -52,10 +49,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [showValuesDialog, setShowValuesDialog] = useState(false);
-  const [validatedFormData, setValidatedFormData] = useState<any>(null);
-  const [customOptionTexts, setCustomOptionTexts] = useState<Record<string, string>>({});
 
   // Resetear el formulario cuando se abre/cierra el modal
   useEffect(() => {
@@ -63,69 +56,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       setFormValues({});
       setValidationErrors([]);
       setShowValidation(false);
-      setCustomOptionTexts({});
     }
   }, [open]);
-
-  // Función helper para normalizar tiempo a formato HH:MM
-  const normalizeTime = (timeValue: string): string => {
-    if (!timeValue) return '';
-    // Si tiene formato HH:MM:SS, tomar solo HH:MM
-    if (timeValue.length >= 5) {
-      return timeValue.substring(0, 5);
-    }
-    return timeValue;
-  };
-
-  // Función para formatear tiempo mientras se escribe (HH:MM)
-  const formatTimeInput = (value: string): string => {
-    // Remover todo excepto números
-    const numbers = value.replace(/\D/g, '');
-    
-    if (numbers.length === 0) return '';
-    if (numbers.length <= 2) return numbers;
-    if (numbers.length <= 4) return `${numbers.substring(0, 2)}:${numbers.substring(2)}`;
-    
-    // Limitar a 4 dígitos (HHMM)
-    return `${numbers.substring(0, 2)}:${numbers.substring(2, 4)}`;
-  };
-
-  // Función para validar formato de tiempo HH:MM
-  const isValidTime = (time: string): boolean => {
-    if (!time || time.length !== 5) return false;
-    const [hours, minutes] = time.split(':');
-    const h = parseInt(hours, 10);
-    const m = parseInt(minutes, 10);
-    return !isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59;
-  };
-
-  // Función helper para verificar si debe mostrarse error en fecha/hora
-  const shouldShowDateTimeError = (activity: Activity, index?: number): { date: boolean, time: boolean } => {
-    if (!showValidation) return { date: false, time: false };
-    
-    const value = formValues[activity.id];
-    let hasValue = false;
-    
-    if (index !== undefined) {
-      // Para campos repetibles
-      const measurementValue = Array.isArray(value) ? value[index] : undefined;
-      hasValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
-    } else {
-      // Para campos simples
-      hasValue = value !== undefined && value !== null && value !== '' && 
-                 !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
-    }
-    
-    if (!hasValue) return { date: false, time: false };
-    
-    const dateKey = index !== undefined ? `${activity.id}_date_${index}` : `${activity.id}_date`;
-    const timeKey = index !== undefined ? `${activity.id}_time_${index}` : `${activity.id}_time`;
-    
-    return {
-      date: activity.requireDate ? (!formValues[dateKey] || formValues[dateKey] === '') : false,
-      time: activity.requireTime ? (!formValues[timeKey] || formValues[timeKey] === '') : false,
-    };
-  };
 
   const handleChange = (activityId: string, value: any, index?: number) => {
     let newFormValues: Record<string, any>;
@@ -375,152 +307,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       }
     }
 
-    // Validar fecha y hora cuando hay valor en el campo principal
-    const dateTimeValidationErrors: ValidationError[] = [];
-    for (const activity of activities) {
-      const value = formValues[activity.id];
-      const hasValue = value !== undefined && value !== null && value !== '' && 
-                      !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
-      
-      if (hasValue) {
-        if (activity.allowMultiple && activity.repeatCount) {
-          // Para campos repetibles, validar fecha y hora de cada medición que tenga valor
-          for (let i = 0; i < activity.repeatCount; i++) {
-            const measurementValue = Array.isArray(value) ? value[i] : undefined;
-            const hasMeasurementValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
-            
-            if (hasMeasurementValue) {
-              if (activity.requireDate) {
-                const dateValue = formValues[`${activity.id}_date_${i}`];
-                if (!dateValue || dateValue === '') {
-                  dateTimeValidationErrors.push({
-                    activityId: activity.id,
-                    activityName: activity.name,
-                    rule: {
-                      id: `required_date_${i}`,
-                      name: 'Fecha requerida',
-                      condition: 'equals',
-                      value: '',
-                      severity: 'error',
-                      message: `La fecha es obligatoria cuando se ingresa un valor en la medición ${i + 1} de "${activity.name}".`,
-                      isActive: true,
-                    },
-                  });
-                }
-              }
-              if (activity.requireTime) {
-                const timeValue = formValues[`${activity.id}_time_${i}`];
-                if (!timeValue || timeValue === '') {
-                  dateTimeValidationErrors.push({
-                    activityId: activity.id,
-                    activityName: activity.name,
-                    rule: {
-                      id: `required_time_${i}`,
-                      name: 'Hora requerida',
-                      condition: 'equals',
-                      value: '',
-                      severity: 'error',
-                      message: `La hora es obligatoria cuando se ingresa un valor en la medición ${i + 1} de "${activity.name}".`,
-                      isActive: true,
-                    },
-                  });
-                }
-              }
-            }
-          }
-        } else {
-          // Para campos simples, validar fecha y hora si hay valor
-          if (activity.requireDate) {
-            const dateValue = formValues[`${activity.id}_date`];
-            if (!dateValue || dateValue === '') {
-              dateTimeValidationErrors.push({
-                activityId: activity.id,
-                activityName: activity.name,
-                rule: {
-                  id: `required_date`,
-                  name: 'Fecha requerida',
-                  condition: 'equals',
-                  value: '',
-                  severity: 'error',
-                  message: `La fecha es obligatoria cuando se ingresa un valor en "${activity.name}".`,
-                  isActive: true,
-                },
-              });
-            }
-          }
-          if (activity.requireTime) {
-            const timeValue = formValues[`${activity.id}_time`];
-            if (!timeValue || timeValue === '') {
-              dateTimeValidationErrors.push({
-                activityId: activity.id,
-                activityName: activity.name,
-                rule: {
-                  id: `required_time`,
-                  name: 'Hora requerida',
-                  condition: 'equals',
-                  value: '',
-                  severity: 'error',
-                  message: `La hora es obligatoria cuando se ingresa un valor en "${activity.name}".`,
-                  isActive: true,
-                },
-              });
-            }
-          }
-        }
-      }
-    }
-
-    // Validar opciones obligatorias y excluyentes
-    const optionValidationErrors: ValidationError[] = [];
-    for (const activity of activities) {
-      if (activity.options && activity.options.length > 0) {
-        const value = formValues[activity.id];
-        const selectedValues = Array.isArray(value) ? value : (value ? [value] : []);
-        
-        // Validar opciones obligatorias
-        const requiredOptions = activity.options.filter(opt => opt.required);
-        for (const requiredOpt of requiredOptions) {
-          if (!selectedValues.includes(requiredOpt.value)) {
-            optionValidationErrors.push({
-              activityId: activity.id,
-              activityName: activity.name,
-              rule: {
-                id: `required_${requiredOpt.value}`,
-                name: `Opción obligatoria no seleccionada`,
-                condition: 'equals',
-                value: requiredOpt.value,
-                severity: 'error',
-                message: `La opción "${requiredOpt.label}" debe ser seleccionada obligatoriamente para que el paciente califique para este protocolo.`,
-                isActive: true,
-              },
-            });
-          }
-        }
-        
-        // Validar opciones excluyentes
-        const exclusiveOptions = activity.options.filter(opt => opt.exclusive);
-        for (const exclusiveOpt of exclusiveOptions) {
-          if (selectedValues.includes(exclusiveOpt.value)) {
-            optionValidationErrors.push({
-              activityId: activity.id,
-              activityName: activity.name,
-              rule: {
-                id: `exclusive_${exclusiveOpt.value}`,
-                name: `Opción excluyente seleccionada`,
-                condition: 'equals',
-                value: exclusiveOpt.value,
-                severity: 'error',
-                message: `La opción "${exclusiveOpt.label}" es excluyente. Si el paciente tiene esta condición, NO califica para este protocolo.`,
-                isActive: true,
-              },
-            });
-          }
-        }
-      }
-    }
-
     // Validar reglas de todas las actividades
-    const allErrors: ValidationError[] = [...optionValidationErrors, ...dateTimeValidationErrors];
+    const allErrors: ValidationError[] = [];
     for (const activity of activities) {
       const value = formValues[activity.id];
       const errors = validateActivity(activity, value);
@@ -530,124 +318,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     setValidationErrors(allErrors);
 
     if (missingRequired.length === 0 && allErrors.filter(e => e.rule.severity === 'error').length === 0) {
-      // Función helper para formatear valores numéricos
-      const formatNumericValue = (value: any, activity: Activity): any => {
-        if (value === null || value === undefined || value === '') {
-          return value;
-        }
-
-        // Solo formatear si la actividad tiene decimalPlaces configurado
-        if (activity.decimalPlaces === undefined) {
-          return value;
-        }
-
-        const numericTypes = ['number_simple', 'number_range', 'number_compound'];
-        if (!numericTypes.includes(activity.fieldType)) {
-          return value;
-        }
-
-        const decimalPlaces = activity.decimalPlaces;
-
-        // Si es un array (campos repetibles), formatear cada valor
-        if (Array.isArray(value)) {
-          return value.map(v => {
-            const num = parseFloat(v);
-            if (isNaN(num)) return v;
-            // Devolver como string formateado para mantener los decimales en JSON
-            return num.toFixed(decimalPlaces);
-          });
-        }
-
-        // Si es un objeto (campo compuesto), formatear cada campo numérico
-        if (typeof value === 'object' && value !== null) {
-          const formatted: any = {};
-          for (const key in value) {
-            const num = parseFloat(value[key]);
-            if (!isNaN(num)) {
-              formatted[key] = num.toFixed(decimalPlaces);
-            } else {
-              formatted[key] = value[key];
-            }
-          }
-          return formatted;
-        }
-
-        // Valor numérico simple
-        const num = parseFloat(value);
-        if (isNaN(num)) return value;
-        // Devolver como string formateado para mantener los decimales en JSON
-        return num.toFixed(decimalPlaces);
-      };
-
-      // Construir objeto con los valores del formulario
-      const formData: any = {
-        visitName,
-        activities: activities.map(activity => {
-          const rawValue = formValues[activity.id];
-          const formattedValue = formatNumericValue(rawValue, activity);
-          
-          const activityObj: any = {
-            id: activity.id,
-            name: activity.name,
-            fieldType: activity.fieldType,
-            value: formattedValue,
-            helpText: activity.helpText, // Ayuda para el médico
-            description: activity.description, // Instrucciones para la IA
-          };
-
-          // Incluir campos si existen en la actividad
-          if (activity.measurementUnit) {
-            activityObj.measurementUnit = activity.measurementUnit;
-          }
-
-          // Incluir fecha y hora si están configuradas
-          if (activity.requireDate || activity.requireTime) {
-            if (activity.allowMultiple) {
-              // Para campos repetibles, construir array con fecha/hora por medición
-              const measurements: any[] = [];
-              const repeatCount = activity.repeatCount || 3;
-              for (let i = 0; i < repeatCount; i++) {
-                const measurementValue = Array.isArray(formattedValue) ? formattedValue[i] : undefined;
-                const measurementDate = formValues[`${activity.id}_date_${i}`];
-                const measurementTime = formValues[`${activity.id}_time_${i}`];
-                
-                if (measurementValue !== undefined || measurementDate || measurementTime) {
-                  const measurement: any = {};
-                  if (measurementValue !== undefined) {
-                    measurement.value = measurementValue;
-                  }
-                  if (activity.requireDate && measurementDate) {
-                    measurement.date = measurementDate;
-                  }
-                  if (activity.requireTime && measurementTime) {
-                    measurement.time = normalizeTime(measurementTime);
-                  }
-                  measurements.push(measurement);
-                }
-              }
-              if (measurements.length > 0) {
-                activityObj.measurements = measurements;
-              }
-            } else {
-              // Para campos simples
-              const activityDate = formValues[`${activity.id}_date`];
-              const activityTime = formValues[`${activity.id}_time`];
-              if (activity.requireDate && activityDate) {
-                activityObj.date = activityDate;
-              }
-              if (activity.requireTime && activityTime) {
-                activityObj.time = normalizeTime(activityTime);
-              }
-            }
-          }
-
-          return activityObj;
-        }),
-        validationErrors: allErrors.filter(e => e.rule.severity === 'warning'),
-        timestamp: new Date().toISOString(),
-      };
-      setValidatedFormData(formData);
-      setShowSuccessToast(true);
+      alert('✅ Formulario válido! Todos los campos requeridos están completos y no hay errores de validación.');
     }
   };
 
@@ -743,24 +414,17 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           );
 
         case 'select_multiple':
-          const currentValues = Array.isArray(fieldValue) ? fieldValue : [];
-          const customOptionText = customOptionTexts[fieldId] || '';
-          
-          // Obtener opciones personalizadas (las que están en currentValues pero no en activity.options)
-          const predefinedValues = activity.options?.map(opt => opt.value) || [];
-          const customValues = currentValues.filter(v => !predefinedValues.includes(v));
-          
           return (
             <FormControl component="fieldset" error={showValidation && activity.required && (!fieldValue || fieldValue.length === 0)}>
               <FormGroup>
-                {/* Opciones precargadas */}
                 {activity.options?.map((option) => (
                   <FormControlLabel
                     key={option.value}
                     control={
                       <Checkbox
-                        checked={currentValues.includes(option.value)}
+                        checked={Array.isArray(fieldValue) && fieldValue.includes(option.value)}
                         onChange={(e) => {
+                          const currentValues = Array.isArray(fieldValue) ? fieldValue : [];
                           const newValues = e.target.checked
                             ? [...currentValues, option.value]
                             : currentValues.filter(v => v !== option.value);
@@ -771,78 +435,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                     label={option.label}
                   />
                 ))}
-                
-                {/* Opciones personalizadas agregadas por el médico */}
-                {customValues.map((customValue, idx) => (
-                  <FormControlLabel
-                    key={`custom-${idx}-${customValue}`}
-                    control={
-                      <Checkbox
-                        checked={true}
-                        onChange={() => {
-                          const newValues = currentValues.filter(v => v !== customValue);
-                          handleChange(activity.id, newValues, index);
-                        }}
-                      />
-                    }
-                    label={
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Typography>{customValue}</Typography>
-                        <Chip label="Personalizada" size="small" color="primary" variant="outlined" />
-                      </Box>
-                    }
-                  />
-                ))}
-                
-                {/* Campo para agregar nueva opción personalizada (solo si está habilitado) */}
-                {activity.allowCustomOptions && (
-                  <Box display="flex" gap={1} alignItems="center" sx={{ mt: 1 }}>
-                    <TextField
-                      size="small"
-                      placeholder="Agregar otra opción..."
-                      value={customOptionText}
-                      onChange={(e) => {
-                        setCustomOptionTexts({
-                          ...customOptionTexts,
-                          [fieldId]: e.target.value,
-                        });
-                      }}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && customOptionText.trim()) {
-                          const trimmedText = customOptionText.trim();
-                          if (!currentValues.includes(trimmedText)) {
-                            handleChange(activity.id, [...currentValues, trimmedText], index);
-                            setCustomOptionTexts({
-                              ...customOptionTexts,
-                              [fieldId]: '',
-                            });
-                          }
-                        }
-                      }}
-                      sx={{ flex: 1 }}
-                    />
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<AddIcon />}
-                      onClick={() => {
-                        if (customOptionText.trim()) {
-                          const trimmedText = customOptionText.trim();
-                          if (!currentValues.includes(trimmedText)) {
-                            handleChange(activity.id, [...currentValues, trimmedText], index);
-                            setCustomOptionTexts({
-                              ...customOptionTexts,
-                              [fieldId]: '',
-                            });
-                          }
-                        }
-                      }}
-                      disabled={!customOptionText.trim() || currentValues.includes(customOptionText.trim())}
-                    >
-                      Agregar
-                    </Button>
-                  </Box>
-                )}
               </FormGroup>
               {showValidation && activity.required && (!fieldValue || fieldValue.length === 0) && (
                 <Typography variant="caption" color="error">
@@ -960,6 +552,12 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           )}
         </Box>
 
+        {activity.description && (
+          <Typography variant="body2" color="text.secondary" paragraph>
+            {activity.description}
+          </Typography>
+        )}
+
         {activity.helpText && (
           <Alert severity="info" sx={{ mb: 2 }}>
             {activity.helpText}
@@ -974,131 +572,11 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                   Medición {index + 1}:
                 </Typography>
                 {renderSingleField(index)}
-                
-                {/* Campos de fecha y hora para mediciones repetibles */}
-                {(activity.requireDate || activity.requireTime) && (
-                  <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    {activity.requireDate && (() => {
-                      const dateError = shouldShowDateTimeError(activity, index).date;
-                      return (
-                        <TextField
-                          type="date"
-                          label="Fecha de realización"
-                          value={formValues[`${activity.id}_date_${index}`] || ''}
-                          onChange={(e) => handleChange(`${activity.id}_date_${index}`, e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                          size="small"
-                          sx={{ minWidth: 200 }}
-                          error={dateError}
-                          helperText={dateError ? 'La fecha es obligatoria cuando se ingresa un valor' : ''}
-                        />
-                      );
-                    })()}
-                    {activity.requireTime && (() => {
-                      const timeError = shouldShowDateTimeError(activity, index).time;
-                      return (
-                        <TextField
-                          type="text"
-                          label="Hora de realización"
-                          placeholder="HH:MM"
-                          value={normalizeTime(formValues[`${activity.id}_time_${index}`] || '')}
-                          onChange={(e) => {
-                            const formatted = formatTimeInput(e.target.value);
-                            handleChange(`${activity.id}_time_${index}`, formatted);
-                          }}
-                          onBlur={(e) => {
-                            const timeValue = normalizeTime(e.target.value);
-                            if (timeValue && !isValidTime(timeValue)) {
-                              // Si el formato no es válido, limpiar el campo
-                              handleChange(`${activity.id}_time_${index}`, '');
-                            } else {
-                              handleChange(`${activity.id}_time_${index}`, timeValue);
-                            }
-                          }}
-                          InputLabelProps={{ shrink: true }}
-                          inputProps={{ 
-                            maxLength: 5,
-                            pattern: '[0-9]{2}:[0-9]{2}'
-                          }}
-                          size="small"
-                          sx={{ minWidth: 200 }}
-                          error={timeError}
-                          helperText={
-                            timeError 
-                              ? 'La hora es obligatoria cuando se ingresa un valor' 
-                              : 'Formato: HH:MM (ej: 14:30)'
-                          }
-                        />
-                      );
-                    })()}
-                  </Box>
-                )}
               </Box>
             ))}
           </Box>
         ) : (
-          <>
-            {renderSingleField()}
-            
-            {/* Campos de fecha y hora para campos simples */}
-            {(activity.requireDate || activity.requireTime) && (
-              <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                {activity.requireDate && (() => {
-                  const dateError = shouldShowDateTimeError(activity).date;
-                  return (
-                    <TextField
-                      type="date"
-                      label="Fecha en que se realizó la actividad"
-                      value={formValues[`${activity.id}_date`] || ''}
-                      onChange={(e) => handleChange(`${activity.id}_date`, e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                      size="small"
-                      sx={{ minWidth: 200 }}
-                      error={dateError}
-                      helperText={dateError ? 'La fecha es obligatoria cuando se ingresa un valor' : ''}
-                    />
-                  );
-                })()}
-                {activity.requireTime && (() => {
-                  const timeError = shouldShowDateTimeError(activity).time;
-                  return (
-                    <TextField
-                      type="text"
-                      label="Hora en que se realizó la actividad"
-                      placeholder="HH:MM"
-                      value={normalizeTime(formValues[`${activity.id}_time`] || '')}
-                      onChange={(e) => {
-                        const formatted = formatTimeInput(e.target.value);
-                        handleChange(`${activity.id}_time`, formatted);
-                      }}
-                      onBlur={(e) => {
-                        const timeValue = normalizeTime(e.target.value);
-                        if (timeValue && !isValidTime(timeValue)) {
-                          // Si el formato no es válido, limpiar el campo
-                          handleChange(`${activity.id}_time`, '');
-                        } else {
-                          handleChange(`${activity.id}_time`, timeValue);
-                        }
-                      }}
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ 
-                        maxLength: 5,
-                        pattern: '[0-9]{2}:[0-9]{2}'
-                      }}
-                      size="small"
-                      sx={{ minWidth: 200 }}
-                      error={timeError}
-                      helperText={
-                        timeError 
-                          ? 'La hora es obligatoria cuando se ingresa un valor' 
-                          : 'Formato: HH:MM (ej: 14:30)'
-                      }
-                    />
-                  );
-                })()}
-              </Box>
-            )}
-          </>
+          renderSingleField()
         )}
 
         {/* Mostrar errores de validación para esta actividad */}
@@ -1206,103 +684,16 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             Cerrar
           </Button>
           {activities.length > 0 && (
-            <>
-              <Button
-                onClick={() => setShowValuesDialog(true)}
-                variant="outlined"
-                startIcon={<CheckCircleIcon />}
-                disabled={!validatedFormData}
-              >
-                Ver Objeto
-              </Button>
-              <Button
-                onClick={handleSubmit}
-                variant="contained"
-                startIcon={<SendIcon />}
-              >
-                Validar Formulario
-              </Button>
-            </>
+            <Button
+              onClick={handleSubmit}
+              variant="contained"
+              startIcon={<SendIcon />}
+            >
+              Validar Formulario
+            </Button>
           )}
         </Box>
       </DialogActions>
-      
-      {/* Toast de validación exitosa */}
-      <Snackbar
-        open={showSuccessToast}
-        autoHideDuration={5000}
-        onClose={() => setShowSuccessToast(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert
-          onClose={() => setShowSuccessToast(false)}
-          severity="success"
-          sx={{ width: '100%', minWidth: 300 }}
-          icon={<CheckCircleIcon />}
-          action={
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => {
-                setShowSuccessToast(false);
-                setShowValuesDialog(true);
-              }}
-              sx={{ 
-                fontWeight: 600,
-                textTransform: 'none',
-                '&:hover': {
-                  bgcolor: 'rgba(255, 255, 255, 0.1)'
-                }
-              }}
-            >
-              Ver Objeto
-            </Button>
-          }
-        >
-          Formulario válido! Todos los campos requeridos están completos y no hay errores de validación.
-        </Alert>
-      </Snackbar>
-
-      {/* Dialog para mostrar valores validados */}
-      <Dialog
-        open={showValuesDialog}
-        onClose={() => setShowValuesDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box display="flex" alignItems="center" gap={1}>
-            <CheckCircleIcon color="success" />
-            <Typography variant="h6">Valores del Formulario</Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Aquí están los valores completados en el formulario:
-          </Typography>
-          <Box
-            sx={{
-              mt: 2,
-              p: 2,
-              bgcolor: 'grey.50',
-              borderRadius: 1,
-              border: '1px solid',
-              borderColor: 'grey.300',
-              maxHeight: '60vh',
-              overflow: 'auto',
-            }}
-          >
-            <pre style={{ margin: 0, fontSize: '0.875rem', fontFamily: 'monospace' }}>
-              {validatedFormData ? JSON.stringify(validatedFormData, null, 2) : 'Cargando...'}
-            </pre>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowValuesDialog(false)}>
-            Cerrar
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Dialog>
   );
 };
