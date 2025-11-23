@@ -43,8 +43,6 @@ interface ActivityFormData {
   fieldType: FieldType;
   required: boolean;
   measurementUnit?: string;
-  expectedMin?: number;
-  expectedMax?: number;
   helpText?: string;
   allowMultiple?: boolean;
   options?: SelectOption[];
@@ -54,7 +52,6 @@ const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = 
   { value: 'text_short', label: 'Texto Corto', description: 'Campo de texto de una línea' },
   { value: 'text_long', label: 'Texto Largo', description: 'Área de texto multilínea' },
   { value: 'number_simple', label: 'Número Simple', description: 'Campo numérico' },
-  { value: 'number_range', label: 'Número con Rango', description: 'Número con validación mín/máx' },
   { value: 'number_compound', label: 'Número Compuesto', description: 'Ej: Sistólica/Diastólica' },
   { value: 'select_single', label: 'Selección Única', description: 'Lista de opciones (una sola)' },
   { value: 'select_multiple', label: 'Selección Múltiple', description: 'Lista de opciones (varias)' },
@@ -63,7 +60,6 @@ const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = 
   { value: 'time', label: 'Hora', description: 'Selector de hora' },
   { value: 'datetime', label: 'Fecha y Hora', description: 'Selector combinado' },
   { value: 'file', label: 'Archivo Adjunto', description: 'Subir archivo (PDF, imagen, etc.)' },
-  { value: 'table', label: 'Tabla Repetible', description: 'Tabla con múltiples filas' },
   { value: 'conditional', label: 'Campo Condicional', description: 'Se muestra según otra respuesta' },
 ];
 
@@ -88,8 +84,6 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
         fieldType: activity.fieldType,
         required: activity.required,
         measurementUnit: activity.measurementUnit,
-        expectedMin: activity.expectedMin,
-        expectedMax: activity.expectedMax,
         helpText: activity.helpText,
         allowMultiple: activity.allowMultiple,
         options: activity.options,
@@ -172,8 +166,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
   const sortedActivities = [...activities].sort((a, b) => a.order - b.order);
 
   const needsOptions = formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple';
-  const needsRange = formData.fieldType === 'number_range';
-  const needsUnit = formData.fieldType === 'number_simple' || formData.fieldType === 'number_range';
+  const needsUnit = formData.fieldType === 'number_simple';
 
   return (
     <Dialog open={true} onClose={onClose} maxWidth="md" fullWidth>
@@ -249,11 +242,6 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
                           {activity.measurementUnit && (
                             <Typography variant="caption" display="block">
                               Unidad: {activity.measurementUnit}
-                            </Typography>
-                          )}
-                          {(activity.expectedMin !== undefined || activity.expectedMax !== undefined) && (
-                            <Typography variant="caption" display="block">
-                              Rango: {activity.expectedMin} - {activity.expectedMax}
                             </Typography>
                           )}
                         </Box>
@@ -351,25 +339,6 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
                 fullWidth
                 placeholder="Ej: mmHg, kg, °C"
               />
-            )}
-
-            {needsRange && (
-              <Box display="flex" gap={2}>
-                <TextField
-                  label="Valor Mínimo"
-                  type="number"
-                  value={formData.expectedMin || ''}
-                  onChange={(e) => setFormData({ ...formData, expectedMin: parseFloat(e.target.value) || undefined })}
-                  fullWidth
-                />
-                <TextField
-                  label="Valor Máximo"
-                  type="number"
-                  value={formData.expectedMax || ''}
-                  onChange={(e) => setFormData({ ...formData, expectedMax: parseFloat(e.target.value) || undefined })}
-                  fullWidth
-                />
-              </Box>
             )}
 
             {needsOptions && (

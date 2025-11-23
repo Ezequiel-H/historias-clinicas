@@ -100,7 +100,6 @@ export const VisitConfigPage: React.FC = () => {
       text_short: 'Texto Corto',
       text_long: 'Texto Largo',
       number_simple: 'Número Simple',
-      number_range: 'Número con Rango',
       number_compound: 'Número Compuesto',
       select_single: 'Selección Única',
       select_multiple: 'Selección Múltiple',
@@ -109,7 +108,6 @@ export const VisitConfigPage: React.FC = () => {
       time: 'Hora',
       datetime: 'Fecha y Hora',
       file: 'Archivo Adjunto',
-      table: 'Tabla Repetible',
       conditional: 'Campo Condicional',
     };
     return types[type] || type;

@@ -26,7 +26,6 @@ export type FieldType =
   | 'text_short'           // Texto corto
   | 'text_long'            // Texto largo (textarea)
   | 'number_simple'        // Número simple
-  | 'number_range'         // Número con validación de rango
   | 'number_compound'      // Número compuesto (ej: sistólica/diastólica)
   | 'select_single'        // Selección única (radio/select)
   | 'select_multiple'      // Selección múltiple (checkbox)
@@ -35,7 +34,6 @@ export type FieldType =
   | 'time'                 // Hora
   | 'datetime'             // Fecha y hora
   | 'file'                 // Archivo adjunto
-  | 'table'                // Tabla/Grid repetible
   | 'conditional';         // Campo condicional
 
 // Configuración de un campo compuesto
@@ -61,18 +59,6 @@ export interface ConditionalConfig {
   showWhen: string | boolean; // Valor que debe tener para mostrarse
 }
 
-// Configuración de tabla repetible
-export interface TableConfig {
-  columns: {
-    name: string;
-    label: string;
-    type: FieldType;
-    unit?: string;
-  }[];
-  minRows?: number;
-  maxRows?: number;
-}
-
 export interface Activity {
   id: string;
   visitId: string;
@@ -91,7 +77,6 @@ export interface Activity {
   allowCustomOptions?: boolean;      // Para select_multiple: permite agregar opciones personalizadas
   compoundConfig?: CompoundFieldConfig; // Para number_compound
   conditionalConfig?: ConditionalConfig; // Para conditional
-  tableConfig?: TableConfig;          // Para table
   allowMultiple?: boolean;            // Para campos repetibles (múltiples mediciones)
   repeatCount?: number;               // Número de veces que se debe repetir (default: 3)
   requireDate?: boolean;              // Solicitar fecha en que se realizó la actividad

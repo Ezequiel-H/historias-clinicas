@@ -17,12 +17,14 @@ import {
   Paper,
   Chip,
   FormGroup,
+  Snackbar,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   Send as SendIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import type { Activity, ActivityRule } from '../../types';
 
@@ -40,6 +42,14 @@ interface ValidationError {
   currentValue?: any;
 }
 
+// Tipo para funciones de validación estandarizadas
+type ValidationFunction = (
+  activity: Activity,
+  value: any,
+  formValues: Record<string, any>,
+  index?: number
+) => { isValid: boolean; error?: ValidationError };
+
 export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   open,
   onClose,
@@ -49,6 +59,67 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+
+  // Función helper para normalizar tiempo a formato HH:MM
+  const normalizeTime = (timeValue: string): string => {
+    if (!timeValue) return '';
+    // Si tiene formato HH:MM:SS, tomar solo HH:MM
+    if (timeValue.length >= 5) {
+      return timeValue.substring(0, 5);
+    }
+    return timeValue;
+  };
+
+  // Función para formatear tiempo mientras se escribe (HH:MM)
+  const formatTimeInput = (value: string): string => {
+    // Remover todo excepto números
+    const numbers = value.replace(/\D/g, '');
+    
+    if (numbers.length === 0) return '';
+    if (numbers.length <= 2) return numbers;
+    if (numbers.length <= 4) return `${numbers.substring(0, 2)}:${numbers.substring(2)}`;
+    
+    // Limitar a 4 dígitos (HHMM)
+    return `${numbers.substring(0, 2)}:${numbers.substring(2, 4)}`;
+  };
+
+  // Función para validar formato de tiempo HH:MM
+  const isValidTime = (time: string): boolean => {
+    if (!time || time.length !== 5) return false;
+    const [hours, minutes] = time.split(':');
+    const h = parseInt(hours, 10);
+    const m = parseInt(minutes, 10);
+    return !isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59;
+  };
+
+  // Función helper para verificar si debe mostrarse error en fecha/hora
+  const shouldShowDateTimeError = (activity: Activity, index?: number): { date: boolean, time: boolean } => {
+    if (!showValidation) return { date: false, time: false };
+    
+    const value = formValues[activity.id];
+    let hasValue = false;
+    
+    if (index !== undefined) {
+      // Para campos repetibles
+      const measurementValue = Array.isArray(value) ? value[index] : undefined;
+      hasValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
+    } else {
+      // Para campos simples
+      hasValue = value !== undefined && value !== null && value !== '' && 
+                 !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+    }
+    
+    if (!hasValue) return { date: false, time: false };
+    
+    const dateKey = index !== undefined ? `${activity.id}_date_${index}` : `${activity.id}_date`;
+    const timeKey = index !== undefined ? `${activity.id}_time_${index}` : `${activity.id}_time`;
+    
+    return {
+      date: activity.requireDate ? (!formValues[dateKey] || formValues[dateKey] === '') : false,
+      time: activity.requireTime ? (!formValues[timeKey] || formValues[timeKey] === '') : false,
+    };
+  };
 
   // Resetear el formulario cuando se abre/cierra el modal
   useEffect(() => {
@@ -56,6 +127,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       setFormValues({});
       setValidationErrors([]);
       setShowValidation(false);
+      setShowSuccessToast(false);
     }
   }, [open]);
 
@@ -80,14 +152,438 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     }
   };
 
+  // ============================================
+  // FUNCIONES DE VALIDACIÓN ESTANDARIZADAS
+  // ============================================
+
+  /**
+   * Construye el array de funciones de validación para una actividad
+   */
+  const buildValidationRules = (activity: Activity): ValidationFunction[] => {
+    const rules: ValidationFunction[] = [];
+
+    // 1. Validación de campo requerido
+    if (activity.required) {
+      rules.push(validateRequired);
+    }
+
+    // 2. Validación de fecha requerida (si hay valor)
+    if (activity.requireDate) {
+      rules.push(validateRequiredDate);
+    }
+
+    // 3. Validación de hora requerida (si hay valor)
+    if (activity.requireTime) {
+      rules.push(validateRequiredTime);
+    }
+
+    // 4. Validación de opciones obligatorias
+    if (activity.options && activity.options.some(opt => opt.required)) {
+      rules.push(validateRequiredOptions);
+    }
+
+    // 5. Validación de opciones excluyentes
+    if (activity.options && activity.options.some(opt => opt.exclusive)) {
+      rules.push(validateExclusiveOptions);
+    }
+
+    // 6. Validación de reglas personalizadas (validationRules)
+    if (activity.validationRules && activity.validationRules.length > 0) {
+      rules.push(validateCustomRules);
+    }
+
+    return rules;
+  };
+
+  /**
+   * Valida que el campo requerido tenga un valor
+   */
+  const validateRequired: ValidationFunction = (activity, value, _formValues, index) => {
+    // Para campos repetibles con índice específico, validar solo esa medición
+    if (activity.allowMultiple && index !== undefined) {
+      const measurementValue = Array.isArray(value) ? value[index] : undefined;
+      const hasMeasurementValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
+      
+      if (hasMeasurementValue) {
+        return { isValid: true };
+      }
+      
+      // Para campos repetibles, no mostrar error por medición individual si hay otras con valor
+      // Solo validar si es la primera medición o si todas están vacías
+      if (index === 0 || (Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined))) {
+        return {
+          isValid: false,
+          error: {
+            activityId: activity.id,
+            activityName: activity.name,
+            rule: {
+              id: `required_${index}`,
+              name: 'Campo requerido',
+              condition: 'equals',
+              value: '',
+              severity: 'error',
+              message: `El campo "${activity.name}" requiere al menos una medición.`,
+              isActive: true,
+            },
+          },
+        };
+      }
+      
+      return { isValid: true };
+    }
+    
+    // Para campos simples o validación general de repetibles
+    const hasValue = value !== undefined && value !== null && value !== '' && 
+                    !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+    
+    if (hasValue) {
+      return { isValid: true };
+    }
+
+    return {
+      isValid: false,
+      error: {
+        activityId: activity.id,
+        activityName: activity.name,
+        rule: {
+          id: 'required',
+          name: 'Campo requerido',
+          condition: 'equals',
+          value: '',
+          severity: 'error',
+          message: `El campo "${activity.name}" es obligatorio.`,
+          isActive: true,
+        },
+      },
+    };
+  };
+
+  /**
+   * Valida que la fecha esté presente cuando hay valor en el campo principal
+   */
+  const validateRequiredDate: ValidationFunction = (activity, value, formValues, index) => {
+    const hasValue = value !== undefined && value !== null && value !== '' && 
+                    !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+    
+    if (!hasValue) {
+      return { isValid: true }; // No validar si no hay valor principal
+    }
+
+    let dateKey: string;
+    let measurementValue: any;
+    
+    if (activity.allowMultiple && index !== undefined) {
+      measurementValue = Array.isArray(value) ? value[index] : undefined;
+      const hasMeasurementValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
+      if (!hasMeasurementValue) {
+        return { isValid: true }; // No validar si esta medición específica no tiene valor
+      }
+      dateKey = `${activity.id}_date_${index}`;
+    } else if (activity.allowMultiple) {
+      // Para campos repetibles sin índice específico, validar todas las mediciones
+      // Esta validación se hará por cada índice en el bucle principal
+      return { isValid: true };
+    } else {
+      dateKey = `${activity.id}_date`;
+    }
+
+    const dateValue = formValues[dateKey];
+    if (dateValue && dateValue !== '') {
+      return { isValid: true };
+    }
+
+    const measurementText = index !== undefined ? ` en la medición ${index + 1}` : '';
+    return {
+      isValid: false,
+      error: {
+        activityId: activity.id,
+        activityName: activity.name,
+        rule: {
+          id: `required_date${index !== undefined ? `_${index}` : ''}`,
+          name: 'Fecha requerida',
+          condition: 'equals',
+          value: '',
+          severity: 'error',
+          message: `La fecha es obligatoria cuando se ingresa un valor${measurementText} en "${activity.name}".`,
+          isActive: true,
+        },
+      },
+    };
+  };
+
+  /**
+   * Valida que la hora esté presente cuando hay valor en el campo principal
+   */
+  const validateRequiredTime: ValidationFunction = (activity, value, formValues, index) => {
+    const hasValue = value !== undefined && value !== null && value !== '' && 
+                    !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+    
+    if (!hasValue) {
+      return { isValid: true }; // No validar si no hay valor principal
+    }
+
+    let timeKey: string;
+    let measurementValue: any;
+    
+    if (activity.allowMultiple && index !== undefined) {
+      measurementValue = Array.isArray(value) ? value[index] : undefined;
+      const hasMeasurementValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
+      if (!hasMeasurementValue) {
+        return { isValid: true }; // No validar si esta medición específica no tiene valor
+      }
+      timeKey = `${activity.id}_time_${index}`;
+    } else if (activity.allowMultiple) {
+      // Para campos repetibles sin índice específico, validar todas las mediciones
+      return { isValid: true };
+    } else {
+      timeKey = `${activity.id}_time`;
+    }
+
+    const timeValue = formValues[timeKey];
+    if (timeValue && timeValue !== '') {
+      return { isValid: true };
+    }
+
+    const measurementText = index !== undefined ? ` en la medición ${index + 1}` : '';
+    return {
+      isValid: false,
+      error: {
+        activityId: activity.id,
+        activityName: activity.name,
+        rule: {
+          id: `required_time${index !== undefined ? `_${index}` : ''}`,
+          name: 'Hora requerida',
+          condition: 'equals',
+          value: '',
+          severity: 'error',
+          message: `La hora es obligatoria cuando se ingresa un valor${measurementText} en "${activity.name}".`,
+          isActive: true,
+        },
+      },
+    };
+  };
+
+  /**
+   * Valida que las opciones obligatorias estén seleccionadas
+   */
+  const validateRequiredOptions: ValidationFunction = (activity, value) => {
+    if (!activity.options) {
+      return { isValid: true };
+    }
+
+    const selectedValues = Array.isArray(value) ? value : (value ? [value] : []);
+    const requiredOptions = activity.options.filter(opt => opt.required);
+    
+    for (const requiredOpt of requiredOptions) {
+      if (!selectedValues.includes(requiredOpt.value)) {
+        return {
+          isValid: false,
+          error: {
+          activityId: activity.id,
+          activityName: activity.name,
+          rule: {
+              id: `required_${requiredOpt.value}`,
+              name: 'Opción obligatoria no seleccionada',
+              condition: 'equals',
+              value: requiredOpt.value,
+            severity: 'error',
+              message: `La opción "${requiredOpt.label}" debe ser seleccionada obligatoriamente para que el paciente califique para este protocolo.`,
+            isActive: true,
+          },
+          },
+        };
+      }
+    }
+
+    return { isValid: true };
+  };
+
+  /**
+   * Valida que no se hayan seleccionado opciones excluyentes
+   */
+  const validateExclusiveOptions: ValidationFunction = (activity, value) => {
+    if (!activity.options) {
+      return { isValid: true };
+    }
+
+    const selectedValues = Array.isArray(value) ? value : (value ? [value] : []);
+    const exclusiveOptions = activity.options.filter(opt => opt.exclusive);
+    
+    for (const exclusiveOpt of exclusiveOptions) {
+      if (selectedValues.includes(exclusiveOpt.value)) {
+        return {
+          isValid: false,
+          error: {
+            activityId: activity.id,
+            activityName: activity.name,
+            rule: {
+              id: `exclusive_${exclusiveOpt.value}`,
+              name: 'Opción excluyente seleccionada',
+              condition: 'equals',
+              value: exclusiveOpt.value,
+              severity: 'error',
+              message: `La opción "${exclusiveOpt.label}" es excluyente. Si el paciente tiene esta condición, NO califica para este protocolo.`,
+              isActive: true,
+            },
+          },
+        };
+      }
+    }
+
+    return { isValid: true };
+  };
+
+  /**
+   * Valida las reglas personalizadas (validationRules)
+   */
+  const validateCustomRules: ValidationFunction = (activity, value, formValues) => {
+    if (!activity.validationRules || activity.validationRules.length === 0) {
+      return { isValid: true };
+    }
+
+    // Obtener el valor numérico a validar
+    let numericValue: number | null = null;
+    
+    if (activity.allowMultiple && Array.isArray(value)) {
+      const numericValues = value.filter(v => v !== '' && v !== null && !isNaN(Number(v))).map(Number);
+      if (numericValues.length > 0) {
+        numericValue = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+      }
+    } else if (value !== '' && value !== null && !isNaN(Number(value))) {
+      numericValue = Number(value);
+    }
+    
+    if (numericValue === null) {
+      return { isValid: true }; // No validar si no hay valor
+    }
+
+    for (const rule of activity.validationRules) {
+      if (!rule.isActive) continue;
+
+      let violated = false;
+
+      switch (rule.condition) {
+        case 'min':
+          if (rule.minValue !== undefined && numericValue < rule.minValue) {
+            violated = true;
+          }
+          break;
+        
+        case 'max':
+          if (rule.maxValue !== undefined && numericValue > rule.maxValue) {
+            violated = true;
+          }
+          break;
+        
+        case 'range':
+          if (rule.minValue !== undefined && rule.maxValue !== undefined) {
+            if (numericValue < rule.minValue || numericValue > rule.maxValue) {
+              violated = true;
+            }
+          }
+          break;
+        
+        case 'equals':
+          if (rule.value !== undefined && numericValue !== Number(rule.value)) {
+            violated = true;
+          }
+          break;
+        
+        case 'not_equals':
+          if (rule.value !== undefined && numericValue === Number(rule.value)) {
+            violated = true;
+          }
+          break;
+        
+        case 'formula':
+          if (rule.formula) {
+            const operator = rule.formulaOperator || '>';
+            const formulaResult = evaluateFormula(rule.formula, formValues);
+            
+            if (formulaResult !== null) {
+              switch (operator) {
+                case '>':
+                  violated = !(numericValue > formulaResult);
+                  break;
+                case '>=':
+                  violated = !(numericValue >= formulaResult);
+                  break;
+                case '<':
+                  violated = !(numericValue < formulaResult);
+                  break;
+                case '<=':
+                  violated = !(numericValue <= formulaResult);
+                  break;
+                case '==':
+                  violated = !(numericValue === formulaResult);
+                  break;
+                case '!=':
+                  violated = !(numericValue !== formulaResult);
+                  break;
+              }
+            }
+          }
+          break;
+      }
+
+      if (violated) {
+        return {
+          isValid: false,
+          error: {
+          activityId: activity.id,
+          activityName: activity.name,
+          rule,
+          currentValue: numericValue,
+          },
+        };
+      }
+    }
+
+    return { isValid: true };
+  };
+
+  /**
+   * Ejecuta todas las validaciones para una actividad
+   */
+  const runValidations = (
+    activity: Activity,
+    value: any,
+    formValues: Record<string, any>,
+    index?: number
+  ): ValidationError[] => {
+    const validationRules = buildValidationRules(activity);
+    const errors: ValidationError[] = [];
+
+    for (const validationRule of validationRules) {
+      const result = validationRule(activity, value, formValues, index);
+      if (!result.isValid && result.error) {
+        errors.push(result.error);
+      }
+    }
+
+    return errors;
+  };
+
   const revalidateForm = (values: Record<string, any>) => {
-    // Validar reglas de todas las actividades
+    // Validar reglas de todas las actividades usando el sistema estandarizado
     const allErrors: ValidationError[] = [];
+    
     for (const activity of activities) {
       const value = values[activity.id];
-      const errors = validateActivity(activity, value);
-      allErrors.push(...errors);
+      
+        if (activity.allowMultiple && activity.repeatCount) {
+        // Para campos repetibles, validar cada medición individualmente
+          for (let i = 0; i < activity.repeatCount; i++) {
+          const errors = runValidations(activity, value, values, i);
+          allErrors.push(...errors);
+          }
+        } else {
+        // Para campos simples
+        const errors = runValidations(activity, value, values);
+        allErrors.push(...errors);
+      }
     }
+    
     setValidationErrors(allErrors);
   };
 
@@ -153,172 +649,34 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     }
   };
 
-  const validateActivity = (activity: Activity, value: any): ValidationError[] => {
-    const errors: ValidationError[] = [];
-
-    // Obtener el valor numérico a validar
-    let numericValue: number | null = null;
-    
-    if (activity.allowMultiple && Array.isArray(value)) {
-      // Para campos repetibles, calcular promedio de valores no vacíos
-      const numericValues = value.filter(v => v !== '' && v !== null && !isNaN(Number(v))).map(Number);
-      if (numericValues.length > 0) {
-        numericValue = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
-      }
-    } else if (value !== '' && value !== null && !isNaN(Number(value))) {
-      numericValue = Number(value);
-    }
-    
-    if (numericValue === null) {
-      return errors; // No validar si no hay valor
-    }
-
-    // Validar rango de campos number_range con expectedMin/expectedMax
-    if (activity.fieldType === 'number_range' && (activity.expectedMin !== undefined || activity.expectedMax !== undefined)) {
-      let rangeViolated = false;
-      let rangeMessage = '';
-
-      if (activity.expectedMin !== undefined && numericValue < activity.expectedMin) {
-        rangeViolated = true;
-        rangeMessage = `El valor ${numericValue} está por debajo del mínimo esperado (${activity.expectedMin})`;
-      } else if (activity.expectedMax !== undefined && numericValue > activity.expectedMax) {
-        rangeViolated = true;
-        rangeMessage = `El valor ${numericValue} está por encima del máximo esperado (${activity.expectedMax})`;
-      }
-
-      if (rangeViolated) {
-        errors.push({
-          activityId: activity.id,
-          activityName: activity.name,
-          rule: {
-            name: 'Validación de Rango',
-            condition: 'range',
-            minValue: activity.expectedMin,
-            maxValue: activity.expectedMax,
-            severity: 'error',
-            message: rangeMessage,
-            isActive: true,
-          },
-          currentValue: numericValue,
-        });
-      }
-    }
-
-    // Validar reglas personalizadas
-    if (!activity.validationRules || activity.validationRules.length === 0) {
-      return errors;
-    }
-
-    for (const rule of activity.validationRules) {
-      if (!rule.isActive) continue;
-
-      let violated = false;
-
-      switch (rule.condition) {
-        case 'min':
-          if (rule.minValue !== undefined && numericValue < rule.minValue) {
-            violated = true;
-          }
-          break;
-        
-        case 'max':
-          if (rule.maxValue !== undefined && numericValue > rule.maxValue) {
-            violated = true;
-          }
-          break;
-        
-        case 'range':
-          if (rule.minValue !== undefined && rule.maxValue !== undefined) {
-            if (numericValue < rule.minValue || numericValue > rule.maxValue) {
-              violated = true;
-            }
-          }
-          break;
-        
-        case 'equals':
-          if (rule.value !== undefined && numericValue !== Number(rule.value)) {
-            violated = true;
-          }
-          break;
-        
-        case 'not_equals':
-          if (rule.value !== undefined && numericValue === Number(rule.value)) {
-            violated = true;
-          }
-          break;
-        
-        case 'formula':
-          if (rule.formula) {
-            // Usar operador por defecto si no está definido (para reglas viejas)
-            const operator = rule.formulaOperator || '>';
-            const formulaResult = evaluateFormula(rule.formula, formValues);
-            
-            if (formulaResult !== null) {
-              switch (operator) {
-                case '>':
-                  violated = !(numericValue > formulaResult);
-                  break;
-                case '>=':
-                  violated = !(numericValue >= formulaResult);
-                  break;
-                case '<':
-                  violated = !(numericValue < formulaResult);
-                  break;
-                case '<=':
-                  violated = !(numericValue <= formulaResult);
-                  break;
-                case '==':
-                  violated = !(numericValue === formulaResult);
-                  break;
-                case '!=':
-                  violated = !(numericValue !== formulaResult);
-                  break;
-              }
-            }
-          }
-          break;
-      }
-
-      if (violated) {
-        errors.push({
-          activityId: activity.id,
-          activityName: activity.name,
-          rule,
-          currentValue: numericValue,
-        });
-      }
-    }
-
-    return errors;
-  };
-
   const handleSubmit = () => {
     setShowValidation(true);
     
-    // Validar campos requeridos
-    const missingRequired: string[] = [];
-    for (const activity of activities) {
-      if (activity.required) {
-        const value = formValues[activity.id];
-        if (value === undefined || value === null || value === '' || 
-            (Array.isArray(value) && value.every(v => v === '' || v === null))) {
-          missingRequired.push(activity.name);
-        }
-      }
-    }
-
-    // Validar reglas de todas las actividades
+    // Ejecutar todas las validaciones usando el sistema estandarizado
     const allErrors: ValidationError[] = [];
+    
     for (const activity of activities) {
       const value = formValues[activity.id];
-      const errors = validateActivity(activity, value);
-      allErrors.push(...errors);
+      
+      if (activity.allowMultiple && activity.repeatCount) {
+        // Para campos repetibles, validar cada medición individualmente
+        for (let i = 0; i < activity.repeatCount; i++) {
+          const errors = runValidations(activity, value, formValues, i);
+          allErrors.push(...errors);
+              }
+            } else {
+              // Para campos simples
+        const errors = runValidations(activity, value, formValues);
+        allErrors.push(...errors);
+      }
     }
 
     setValidationErrors(allErrors);
 
-    if (missingRequired.length === 0 && allErrors.filter(e => e.rule.severity === 'error').length === 0) {
-      alert('✅ Formulario válido! Todos los campos requeridos están completos y no hay errores de validación.');
+    // Verificar si hay errores bloqueantes
+    const blockingErrors = allErrors.filter(e => e.rule.severity === 'error');
+    if (blockingErrors.length === 0) {
+      setShowSuccessToast(true);
     }
   };
 
@@ -358,9 +716,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           );
 
         case 'number_simple':
-        case 'number_range':
           const hasRangeError = showValidation && activityErrors.some(e => 
-            e.rule.condition === 'range' && e.rule.name === 'Validación de Rango'
+            e.rule.condition === 'range'
           );
           return (
             <Box>
@@ -373,8 +730,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                 helperText={
                   showValidation && activity.required && !fieldValue 
                     ? 'Campo requerido' 
-                    : activity.fieldType === 'number_range' && activity.expectedMin !== undefined && activity.expectedMax !== undefined
-                    ? `Rango esperado: ${activity.expectedMin} - ${activity.expectedMax}${hasRangeError ? ' ⚠️' : ''}`
                     : ''
                 }
                 InputProps={{
@@ -572,11 +927,131 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                   Medición {index + 1}:
                 </Typography>
                 {renderSingleField(index)}
+                
+                {/* Campos de fecha y hora para mediciones repetibles */}
+                {(activity.requireDate || activity.requireTime) && (
+                  <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    {activity.requireDate && (() => {
+                      const dateError = shouldShowDateTimeError(activity, index).date;
+                      return (
+                        <TextField
+                          type="date"
+                          label="Fecha de realización"
+                          value={formValues[`${activity.id}_date_${index}`] || ''}
+                          onChange={(e) => handleChange(`${activity.id}_date_${index}`, e.target.value)}
+                          InputLabelProps={{ shrink: true }}
+                          size="small"
+                          sx={{ minWidth: 200 }}
+                          error={dateError}
+                          helperText={dateError ? 'La fecha es obligatoria cuando se ingresa un valor' : ''}
+                        />
+                      );
+                    })()}
+                    {activity.requireTime && (() => {
+                      const timeError = shouldShowDateTimeError(activity, index).time;
+                      return (
+                        <TextField
+                          type="text"
+                          label="Hora de realización"
+                          placeholder="HH:MM"
+                          value={normalizeTime(formValues[`${activity.id}_time_${index}`] || '')}
+                          onChange={(e) => {
+                            const formatted = formatTimeInput(e.target.value);
+                            handleChange(`${activity.id}_time_${index}`, formatted);
+                          }}
+                          onBlur={(e) => {
+                            const timeValue = normalizeTime(e.target.value);
+                            if (timeValue && !isValidTime(timeValue)) {
+                              // Si el formato no es válido, limpiar el campo
+                              handleChange(`${activity.id}_time_${index}`, '');
+                            } else {
+                              handleChange(`${activity.id}_time_${index}`, timeValue);
+                            }
+                          }}
+                          InputLabelProps={{ shrink: true }}
+                          inputProps={{ 
+                            maxLength: 5,
+                            pattern: '[0-9]{2}:[0-9]{2}'
+                          }}
+                          size="small"
+                          sx={{ minWidth: 200 }}
+                          error={timeError}
+                          helperText={
+                            timeError 
+                              ? 'La hora es obligatoria cuando se ingresa un valor' 
+                              : 'Formato: HH:MM (ej: 14:30)'
+                          }
+                        />
+                      );
+                    })()}
+                  </Box>
+                )}
               </Box>
             ))}
           </Box>
         ) : (
-          renderSingleField()
+          <>
+            {renderSingleField()}
+            
+            {/* Campos de fecha y hora para campos simples */}
+            {(activity.requireDate || activity.requireTime) && (
+              <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                {activity.requireDate && (() => {
+                  const dateError = shouldShowDateTimeError(activity).date;
+                  return (
+                    <TextField
+                      type="date"
+                      label="Fecha en que se realizó la actividad"
+                      value={formValues[`${activity.id}_date`] || ''}
+                      onChange={(e) => handleChange(`${activity.id}_date`, e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      size="small"
+                      sx={{ minWidth: 200 }}
+                      error={dateError}
+                      helperText={dateError ? 'La fecha es obligatoria cuando se ingresa un valor' : ''}
+                    />
+                  );
+                })()}
+                {activity.requireTime && (() => {
+                  const timeError = shouldShowDateTimeError(activity).time;
+                  return (
+                    <TextField
+                      type="text"
+                      label="Hora en que se realizó la actividad"
+                      placeholder="HH:MM"
+                      value={normalizeTime(formValues[`${activity.id}_time`] || '')}
+                      onChange={(e) => {
+                        const formatted = formatTimeInput(e.target.value);
+                        handleChange(`${activity.id}_time`, formatted);
+                      }}
+                      onBlur={(e) => {
+                        const timeValue = normalizeTime(e.target.value);
+                        if (timeValue && !isValidTime(timeValue)) {
+                          // Si el formato no es válido, limpiar el campo
+                          handleChange(`${activity.id}_time`, '');
+                        } else {
+                          handleChange(`${activity.id}_time`, timeValue);
+                        }
+                      }}
+                      InputLabelProps={{ shrink: true }}
+                      inputProps={{ 
+                        maxLength: 5,
+                        pattern: '[0-9]{2}:[0-9]{2}'
+                      }}
+                      size="small"
+                      sx={{ minWidth: 200 }}
+                      error={timeError}
+                      helperText={
+                        timeError 
+                          ? 'La hora es obligatoria cuando se ingresa un valor' 
+                          : 'Formato: HH:MM (ej: 14:30)'
+                      }
+                    />
+                  );
+                })()}
+              </Box>
+            )}
+          </>
         )}
 
         {/* Mostrar errores de validación para esta actividad */}
@@ -684,16 +1159,33 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             Cerrar
           </Button>
           {activities.length > 0 && (
-            <Button
-              onClick={handleSubmit}
-              variant="contained"
-              startIcon={<SendIcon />}
-            >
-              Validar Formulario
-            </Button>
+              <Button
+                onClick={handleSubmit}
+                variant="contained"
+                startIcon={<SendIcon />}
+              >
+                Validar Formulario
+              </Button>
           )}
         </Box>
       </DialogActions>
+      
+      {/* Toast de validación exitosa */}
+      <Snackbar
+        open={showSuccessToast}
+        autoHideDuration={5000}
+        onClose={() => setShowSuccessToast(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={() => setShowSuccessToast(false)}
+          severity="success"
+          sx={{ width: '100%', minWidth: 300 }}
+          icon={<CheckCircleIcon />}
+        >
+          Formulario válido! Todos los campos requeridos están completos y no hay errores de validación.
+        </Alert>
+      </Snackbar>
     </Dialog>
   );
 };

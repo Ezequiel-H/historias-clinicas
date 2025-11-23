@@ -42,7 +42,6 @@ import {
   ToggleOn as ToggleIcon,
   CalendarToday as DateIcon,
   AttachFile as FileIcon,
-  TableChart as TableIcon,
   CheckBox as CheckboxIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
@@ -76,13 +75,6 @@ const FIELD_TYPES = [
     description: 'Campo numérico (peso, temperatura)',
     icon: <NumberIcon />,
     color: '#2e7d32',
-  },
-  {
-    value: 'number_range' as FieldType,
-    label: 'Número con Rango',
-    description: 'Número con validación mín/máx',
-    icon: <NumberIcon />,
-    color: '#388e3c',
   },
   {
     value: 'number_compound' as FieldType,
@@ -140,13 +132,6 @@ const FIELD_TYPES = [
     icon: <FileIcon />,
     color: '#d32f2f',
   },
-  {
-    value: 'table' as FieldType,
-    label: 'Tabla Repetible',
-    description: 'Tabla con múltiples filas',
-    icon: <TableIcon />,
-    color: '#455a64',
-  },
 ];
 
 export const ActivityFormPage: React.FC = () => {
@@ -170,8 +155,6 @@ export const ActivityFormPage: React.FC = () => {
     requireDate: false,
     requireTime: false,
     measurementUnit: '',
-    expectedMin: '',
-    expectedMax: '',
     decimalPlaces: 2,
     helpText: '',
   });
@@ -205,7 +188,7 @@ export const ActivityFormPage: React.FC = () => {
       
       if (visit && visit.activities) {
         // Solo incluir actividades con tipos de campo numéricos
-        const numericFieldTypes = ['number_simple', 'number_range', 'number_compound'];
+        const numericFieldTypes = ['number_simple', 'number_compound'];
         const numericActivities = visit.activities
           .filter((a) => numericFieldTypes.includes(a.fieldType))
           .map((a) => a.name);
@@ -234,7 +217,7 @@ export const ActivityFormPage: React.FC = () => {
       }
       
       // Cargar lista de actividades disponibles (excluyendo la actual, solo numéricas)
-      const numericFieldTypes = ['number_simple', 'number_range', 'number_compound'];
+      const numericFieldTypes = ['number_simple', 'number_compound'];
       const otherActivities = visit.activities
         ?.filter((a) => a.id !== activityId && numericFieldTypes.includes(a.fieldType))
         .map((a) => a.name) || [];
@@ -255,8 +238,6 @@ export const ActivityFormPage: React.FC = () => {
           requireDate: activity.requireDate || false,
           requireTime: activity.requireTime || false,
           measurementUnit: activity.measurementUnit || '',
-          expectedMin: activity.expectedMin?.toString() || '',
-          expectedMax: activity.expectedMax?.toString() || '',
           decimalPlaces: activity.decimalPlaces ?? 2,
           helpText: activity.helpText || '',
         });
@@ -320,15 +301,9 @@ export const ActivityFormPage: React.FC = () => {
     if (formData.measurementUnit) {
       activityData.measurementUnit = formData.measurementUnit;
     }
-    if (formData.expectedMin) {
-      activityData.expectedMin = parseFloat(formData.expectedMin);
-    }
-    if (formData.expectedMax) {
-      activityData.expectedMax = parseFloat(formData.expectedMax);
-    }
     
     // Agregar decimales para campos numéricos
-    const numericTypes = ['number_simple', 'number_range', 'number_compound'];
+    const numericTypes = ['number_simple', 'number_compound'];
     if (numericTypes.includes(formData.fieldType)) {
       activityData.decimalPlaces = formData.decimalPlaces;
     }
@@ -444,8 +419,7 @@ export const ActivityFormPage: React.FC = () => {
     setValidationRules(validationRules.filter((_, i) => i !== index));
   };
 
-  const needsUnit = ['number_simple', 'number_range'].includes(formData.fieldType);
-  const needsRange = formData.fieldType === 'number_range';
+  const needsUnit = formData.fieldType === 'number_simple';
   const needsOptions = ['select_single', 'select_multiple'].includes(formData.fieldType);
 
   if (loadingData) {
@@ -611,35 +585,6 @@ export const ActivityFormPage: React.FC = () => {
               inputProps={{ min: 0, max: 10, step: 1 }}
               helperText="Los valores se formatearán automáticamente con esta cantidad de decimales (0-10)"
             />
-          )}
-
-          {needsRange && (
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Rango de Valores Permitidos
-              </Typography>
-              <Box display="flex" gap={2}>
-                <TextField
-                  label="Valor Mínimo"
-                  type="number"
-                  value={formData.expectedMin}
-                  onChange={(e) => setFormData({ ...formData, expectedMin: e.target.value })}
-                  fullWidth
-                  placeholder="90"
-                />
-                <TextField
-                  label="Valor Máximo"
-                  type="number"
-                  value={formData.expectedMax}
-                  onChange={(e) => setFormData({ ...formData, expectedMax: e.target.value })}
-                  fullWidth
-                  placeholder="180"
-                />
-              </Box>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                El sistema validará que el valor ingresado esté dentro de este rango
-              </Typography>
-            </Box>
           )}
 
           {needsOptions && (
@@ -912,7 +857,7 @@ export const ActivityFormPage: React.FC = () => {
               />
             )}
             
-            {(formData.fieldType === 'number_simple' || formData.fieldType === 'number_range') && (
+            {formData.fieldType === 'number_simple' && (
               <Box>
                 <TextField
                   type="number"
@@ -929,7 +874,7 @@ export const ActivityFormPage: React.FC = () => {
                   }}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ ml: 2, display: 'block', mt: 0.5 }}>
-                  Decimales: {formData.decimalPlaces} {needsRange && `• Rango: ${formData.expectedMin || '?'} - ${formData.expectedMax || '?'}`}
+                  Decimales: {formData.decimalPlaces}
                 </Typography>
               </Box>
             )}
@@ -996,12 +941,6 @@ export const ActivityFormPage: React.FC = () => {
               <Button variant="outlined" disabled size="small">
                 Seleccionar archivo...
               </Button>
-            )}
-            
-            {formData.fieldType === 'table' && (
-              <Typography variant="body2" color="text.secondary" fontStyle="italic">
-                [Tabla con múltiples filas]
-              </Typography>
             )}
             
             {/* Campos de fecha y hora en la vista previa */}
