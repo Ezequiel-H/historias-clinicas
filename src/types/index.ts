@@ -34,7 +34,8 @@ export type FieldType =
   | 'time'                 // Hora
   | 'datetime'             // Fecha y hora
   | 'file'                 // Archivo adjunto
-  | 'conditional';         // Campo condicional
+  | 'conditional'         // Campo condicional
+  | 'calculated';         // Campo calculado (se calcula automáticamente basado en otros campos)
 
 // Configuración de un campo compuesto
 export interface CompoundFieldConfig {
@@ -90,6 +91,9 @@ export interface Activity {
   
   // Reglas de validación
   validationRules?: ActivityRule[];
+  
+  // Campo calculado (solo si fieldType === 'calculated')
+  calculationFormula?: string; // Ej: "peso / altura" - fórmula para calcular el valor automáticamente
 }
 
 // Regla de validación para actividades

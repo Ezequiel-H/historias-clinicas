@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -179,6 +179,59 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       setValidatedFormData(null);
     }
   }, [open]);
+
+  // Actualizar valores calculados automáticamente cuando cambien los valores del formulario
+  // Usamos un ref para evitar loops infinitos
+  const prevFormValuesRef = useRef<Record<string, any>>({});
+  
+  useEffect(() => {
+    // Solo actualizar si realmente cambió algún valor (no los calculados)
+    const calculatedActivityIds = activities
+      .filter(a => a.fieldType === 'calculated')
+      .map(a => a.id);
+    
+    const relevantValuesChanged = Object.keys(formValues).some(key => {
+      if (calculatedActivityIds.includes(key)) return false; // Ignorar cambios en campos calculados
+      return formValues[key] !== prevFormValuesRef.current[key];
+    });
+
+    if (!relevantValuesChanged && Object.keys(prevFormValuesRef.current).length > 0) {
+      return; // No hay cambios relevantes
+    }
+
+    const newFormValues = { ...formValues };
+    let hasChanges = false;
+
+    activities.forEach(activity => {
+      if (activity.fieldType === 'calculated' && activity.calculationFormula) {
+        const calculated = evaluateFormula(activity.calculationFormula, formValues);
+        
+        if (calculated !== null && !isNaN(calculated)) {
+          const formattedValue = activity.decimalPlaces !== undefined
+            ? Number(calculated.toFixed(activity.decimalPlaces))
+            : calculated;
+          
+          if (newFormValues[activity.id] !== formattedValue) {
+            newFormValues[activity.id] = formattedValue;
+            hasChanges = true;
+          }
+        } else {
+          // Si no se puede calcular, mantener vacío
+          if (newFormValues[activity.id] !== undefined && newFormValues[activity.id] !== '') {
+            newFormValues[activity.id] = '';
+            hasChanges = true;
+          }
+        }
+      }
+    });
+
+    if (hasChanges) {
+      prevFormValuesRef.current = newFormValues;
+      setFormValues(newFormValues);
+    } else {
+      prevFormValuesRef.current = formValues;
+    }
+  }, [formValues, activities]);
 
   const handleChange = (activityId: string, value: any, index?: number) => {
     let newFormValues: Record<string, any>;
@@ -813,7 +866,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           return value;
         }
 
-        const numericTypes = ['number_simple', 'number_compound'];
+        const numericTypes = ['number_simple', 'number_compound', 'calculated'];
         if (!numericTypes.includes(activity.fieldType)) {
           return value;
         }
@@ -853,7 +906,15 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       const formData: any = {
         visitName,
         activities: activities.map(activity => {
-          const rawValue = formValues[activity.id];
+          // Para campos calculados, calcular el valor automáticamente
+          let rawValue = formValues[activity.id];
+          if (activity.fieldType === 'calculated' && activity.calculationFormula) {
+            const calculated = evaluateFormula(activity.calculationFormula, formValues);
+            if (calculated !== null && !isNaN(calculated)) {
+              rawValue = calculated;
+            }
+          }
+          
           const formattedValue = formatNumericValue(rawValue, activity);
           
           const activityObj: any = {
@@ -1152,6 +1213,56 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             </Box>
           );
 
+        case 'calculated':
+          // Calcular el valor automáticamente
+          const calculatedValue = activity.calculationFormula 
+            ? evaluateFormula(activity.calculationFormula, formValues)
+            : null;
+          
+          // Formatear el valor según decimalPlaces
+          let displayValue = '';
+          if (calculatedValue !== null && !isNaN(calculatedValue)) {
+            const decimalPlaces = activity.decimalPlaces ?? 2;
+            displayValue = calculatedValue.toFixed(decimalPlaces);
+          } else {
+            displayValue = '—'; // Mostrar guión si no se puede calcular
+          }
+          
+          return (
+            <Box>
+              <TextField
+                type="text"
+                value={displayValue}
+                InputProps={{
+                  readOnly: true,
+                  startAdornment: activity.measurementUnit ? (
+                    <Box component="span" sx={{ mr: 1, color: 'text.secondary' }}>
+                      {activity.measurementUnit}
+                    </Box>
+                  ) : null,
+                }}
+                fullWidth
+                label="Valor Calculado"
+                helperText={
+                  activity.calculationFormula
+                    ? `Calculado automáticamente: ${activity.calculationFormula}`
+                    : 'No hay fórmula configurada'
+                }
+                sx={{
+                  '& .MuiInputBase-input': {
+                    backgroundColor: 'action.hover',
+                    fontWeight: 'medium',
+                  },
+                }}
+              />
+              {calculatedValue === null && activity.calculationFormula && (
+                <Alert severity="warning" sx={{ mt: 1 }}>
+                  No se pudo calcular el valor. Verifica que los campos necesarios estén completos.
+                </Alert>
+              )}
+            </Box>
+          );
+
         default:
           return (
             <Typography variant="body2" color="text.secondary">
@@ -1177,12 +1288,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             />
           )}
         </Box>
-
-        {activity.description && (
-          <Typography variant="body2" color="text.secondary" paragraph>
-            {activity.description}
-          </Typography>
-        )}
 
         {activity.helpText && (
           <Alert severity="info" sx={{ mb: 2 }}>

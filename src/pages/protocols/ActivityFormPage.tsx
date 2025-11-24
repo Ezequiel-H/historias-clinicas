@@ -50,6 +50,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Visibility as VisibilityIcon,
   Code as CodeIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import type { FieldType, SelectOption, ActivityRule } from '../../types';
 import protocolService from '../../services/protocolService';
@@ -132,6 +133,20 @@ const FIELD_TYPES = [
     icon: <FileIcon />,
     color: '#d32f2f',
   },
+  {
+    value: 'conditional' as FieldType,
+    label: 'Campo Condicional',
+    description: 'Se muestra solo cuando otro campo tiene un valor específico',
+    icon: <LinkIcon />,
+    color: '#9c27b0',
+  },
+  {
+    value: 'calculated' as FieldType,
+    label: 'Campo Calculado',
+    description: 'Se calcula automáticamente basado en otros campos',
+    icon: <CodeIcon />,
+    color: '#d32f2f',
+  },
 ];
 
 export const ActivityFormPage: React.FC = () => {
@@ -160,11 +175,17 @@ export const ActivityFormPage: React.FC = () => {
     measurementUnit: '',
     decimalPlaces: 2,
     helpText: '',
+    calculationFormula: '', // Fórmula para campos calculados
   });
   const [optionsText, setOptionsText] = useState('');
   const [options, setOptions] = useState<SelectOption[]>([]);
   const [validationRules, setValidationRules] = useState<ActivityRule[]>([]);
   const [availableActivities, setAvailableActivities] = useState<string[]>([]);
+  const [availableActivitiesForConditional, setAvailableActivitiesForConditional] = useState<Array<{id: string, name: string, fieldType: FieldType, options?: SelectOption[]}>>([]);
+  const [conditionalConfig, setConditionalConfig] = useState<{dependsOn: string, showWhen: string | boolean}>({
+    dependsOn: '',
+    showWhen: '',
+  });
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
@@ -183,6 +204,16 @@ export const ActivityFormPage: React.FC = () => {
     }
   }, [isEditMode, protocolId, visitId, activityId]);
 
+  // Resetear configuración condicional cuando cambia el tipo de campo
+  useEffect(() => {
+    if (formData.fieldType !== 'conditional') {
+      setConditionalConfig({ dependsOn: '', showWhen: '' });
+    } else if (formData.fieldType === 'conditional' && protocolId && visitId) {
+      // Cargar actividades disponibles cuando se selecciona conditional
+      loadAvailableActivities();
+    }
+  }, [formData.fieldType]);
+
   const loadAvailableActivities = async () => {
     try {
       const response = await protocolService.getProtocolById(protocolId!);
@@ -190,12 +221,23 @@ export const ActivityFormPage: React.FC = () => {
       const visit = protocol.visits.find((v) => v.id === visitId);
       
       if (visit && visit.activities) {
-        // Solo incluir actividades con tipos de campo numéricos
+        // Solo incluir actividades con tipos de campo numéricos (para fórmulas)
         const numericFieldTypes = ['number_simple', 'number_compound'];
         const numericActivities = visit.activities
           .filter((a) => numericFieldTypes.includes(a.fieldType))
           .map((a) => a.name);
         setAvailableActivities(numericActivities);
+        
+        // Cargar todas las actividades para campos condicionales (excluyendo condicionales y calculados)
+        const activitiesForConditional = visit.activities
+          .filter((a) => a.fieldType !== 'conditional' && a.fieldType !== 'calculated')
+          .map((a) => ({
+            id: a.id,
+            name: a.name,
+            fieldType: a.fieldType,
+            options: a.options,
+          }));
+        setAvailableActivitiesForConditional(activitiesForConditional);
       }
     } catch (err) {
       console.error('Error al cargar actividades:', err);
@@ -226,6 +268,17 @@ export const ActivityFormPage: React.FC = () => {
         .map((a) => a.name) || [];
       setAvailableActivities(otherActivities);
       
+      // Cargar todas las actividades para campos condicionales (excluyendo la actual, condicionales y calculados)
+      const activitiesForConditional = visit.activities
+        ?.filter((a) => a.id !== activityId && a.fieldType !== 'conditional' && a.fieldType !== 'calculated')
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          fieldType: a.fieldType,
+          options: a.options,
+        })) || [];
+      setAvailableActivitiesForConditional(activitiesForConditional);
+      
       // Buscar la actividad
       const activity = visit.activities?.find((a) => a.id === activityId);
       
@@ -246,6 +299,7 @@ export const ActivityFormPage: React.FC = () => {
           measurementUnit: activity.measurementUnit || '',
           decimalPlaces: activity.decimalPlaces ?? 2,
           helpText: activity.helpText || '',
+          calculationFormula: activity.calculationFormula || '',
         });
         
         // Cargar opciones si existen
@@ -265,6 +319,16 @@ export const ActivityFormPage: React.FC = () => {
         if (activity.validationRules && activity.validationRules.length > 0) {
           setValidationRules(activity.validationRules);
         }
+        
+        // Cargar configuración condicional si existe
+        if (activity.conditionalConfig) {
+          setConditionalConfig({
+            dependsOn: activity.conditionalConfig.dependsOn || '',
+            showWhen: activity.conditionalConfig.showWhen || '',
+          });
+        } else {
+          setConditionalConfig({ dependsOn: '', showWhen: '' });
+        }
       } else {
         setError('Actividad no encontrada');
       }
@@ -279,6 +343,14 @@ export const ActivityFormPage: React.FC = () => {
   const handleSelectType = (type: FieldType) => {
     setFormData({ ...formData, fieldType: type });
     setStep('config');
+    // Si es conditional, asegurar que se carguen las actividades disponibles
+    if (type === 'conditional' && protocolId && visitId) {
+      loadAvailableActivities();
+    }
+    // Resetear configuración condicional si no es conditional
+    if (type !== 'conditional') {
+      setConditionalConfig({ dependsOn: '', showWhen: '' });
+    }
   };
 
   const parseOptions = (text: string): SelectOption[] => {
@@ -308,8 +380,8 @@ export const ActivityFormPage: React.FC = () => {
       activityData.measurementUnit = formData.measurementUnit;
     }
     
-    // Agregar decimales para campos numéricos
-    const numericTypes = ['number_simple', 'number_compound'];
+    // Agregar decimales para campos numéricos y calculados
+    const numericTypes = ['number_simple', 'number_compound', 'calculated'];
     if (numericTypes.includes(formData.fieldType)) {
       activityData.decimalPlaces = formData.decimalPlaces;
     }
@@ -365,6 +437,29 @@ export const ActivityFormPage: React.FC = () => {
 
     // Siempre enviar reglas de validación (incluso si está vacío para limpiar las reglas existentes)
     activityData.validationRules = validationRules;
+
+    // Agregar fórmula de cálculo si es campo calculado
+    if (formData.fieldType === 'calculated' && formData.calculationFormula) {
+      activityData.calculationFormula = formData.calculationFormula.trim();
+    }
+
+    // Agregar configuración condicional si es campo condicional
+    if (formData.fieldType === 'conditional' && conditionalConfig.dependsOn) {
+      // Convertir showWhen a boolean si es necesario
+      let showWhenValue: string | boolean = conditionalConfig.showWhen;
+      if (typeof conditionalConfig.showWhen === 'string') {
+        // Si es 'true' o 'false', convertir a boolean
+        if (conditionalConfig.showWhen === 'true') {
+          showWhenValue = true;
+        } else if (conditionalConfig.showWhen === 'false') {
+          showWhenValue = false;
+        }
+      }
+      activityData.conditionalConfig = {
+        dependsOn: conditionalConfig.dependsOn,
+        showWhen: showWhenValue,
+      };
+    }
 
     return activityData;
   };
@@ -434,7 +529,7 @@ export const ActivityFormPage: React.FC = () => {
     setValidationRules(validationRules.filter((_, i) => i !== index));
   };
 
-  const needsUnit = formData.fieldType === 'number_simple';
+  const needsUnit = formData.fieldType === 'number_simple' || formData.fieldType === 'calculated';
   const needsOptions = ['select_single', 'select_multiple'].includes(formData.fieldType);
 
   if (loadingData) {
@@ -742,6 +837,274 @@ export const ActivityFormPage: React.FC = () => {
             helperText="Este texto aparecerá como ayuda visible para el médico al completar el formulario"
           />
 
+          {/* Configuración de fórmula para campos calculados */}
+          {formData.fieldType === 'calculated' && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Fórmula de Cálculo
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Define la fórmula que calculará automáticamente el valor de este campo basándose en otros campos numéricos.
+              </Typography>
+              
+              <Autocomplete
+                freeSolo
+                value={null}
+                options={availableActivities}
+                inputValue={formData.calculationFormula || ''}
+                onInputChange={(_, newValue, reason) => {
+                  if (reason === 'input') {
+                    setFormData({ ...formData, calculationFormula: newValue });
+                  }
+                }}
+                onChange={(_, newValue) => {
+                  if (typeof newValue === 'string' && availableActivities.includes(newValue)) {
+                    const currentFormula = formData.calculationFormula || '';
+                    const words = currentFormula.split(/[\s+\-*/()\[\]]+/);
+                    const lastWord = words[words.length - 1] || '';
+                    
+                    let newFormula = currentFormula;
+                    if (lastWord.length > 0) {
+                      const lastIndex = currentFormula.lastIndexOf(lastWord);
+                      newFormula = currentFormula.substring(0, lastIndex) + newValue;
+                    } else {
+                      newFormula = currentFormula + (currentFormula.length > 0 ? ' ' : '') + newValue;
+                    }
+                    
+                    setFormData({ ...formData, calculationFormula: newFormula });
+                  }
+                }}
+                clearOnBlur={false}
+                renderInput={(params) => (
+                  <Box>
+                    <TextField
+                      {...params}
+                      label="Fórmula"
+                      placeholder="Ej: peso / altura"
+                      fullWidth
+                      helperText="Usa nombres de otros campos numéricos y operadores matemáticos (+, -, *, /, paréntesis)"
+                    />
+                    {availableActivities.length > 0 ? (
+                      <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Variables disponibles:
+                        </Typography>
+                        {availableActivities.map((act, i) => (
+                          <Chip 
+                            key={i} 
+                            label={act} 
+                            size="small" 
+                            sx={{ height: 20, fontSize: '0.7rem' }}
+                            color="primary"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        Agrega actividades numéricas (Número Simple, Número Compuesto) para poder usarlas en la fórmula
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+              />
+              
+              {formData.calculationFormula && (
+                <Box sx={{ mt: 2, p: 1.5, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                    Vista previa de la fórmula:
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+                    {formData.calculationFormula.split(/(\s+|[+\-*/()[\]])/).filter(Boolean).map((part, idx) => {
+                      const trimmed = part.trim();
+                      if (!trimmed) return null;
+                      
+                      // Es una variable reconocida?
+                      if (availableActivities.some(act => 
+                        trimmed.toLowerCase() === act.toLowerCase()
+                      )) {
+                        return (
+                          <Chip
+                            key={idx}
+                            label={trimmed}
+                            size="small"
+                            color="success"
+                            icon={<CheckCircleIcon />}
+                          />
+                        );
+                      }
+                      
+                      // Es un operador?
+                      if (['+', '-', '*', '/', '(', ')', '[', ']'].includes(trimmed)) {
+                        return (
+                          <Typography key={idx} component="span" sx={{ color: 'primary.main', fontWeight: 'bold', px: 0.5 }}>
+                            {trimmed}
+                          </Typography>
+                        );
+                      }
+                      
+                      // Es un número?
+                      if (!isNaN(Number(trimmed))) {
+                        return (
+                          <Typography key={idx} component="span" sx={{ color: 'info.main', fontWeight: 'medium' }}>
+                            {trimmed}
+                          </Typography>
+                        );
+                      }
+                      
+                      // Texto sin reconocer
+                      return (
+                        <Typography key={idx} component="span" sx={{ color: 'error.main', textDecoration: 'underline wavy' }}>
+                          {trimmed}
+                        </Typography>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {/* Configuración condicional para campos condicionales */}
+          {formData.fieldType === 'conditional' && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1, border: '1px solid', borderColor: 'info.main' }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Configuración Condicional
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Este campo se mostrará solo cuando otro campo tenga un valor específico.
+              </Typography>
+              
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Depende de (Campo)</InputLabel>
+                <Select
+                  value={conditionalConfig.dependsOn}
+                  label="Depende de (Campo)"
+                  onChange={(e) => {
+                    const selectedActivity = availableActivitiesForConditional.find(a => a.id === e.target.value);
+                    setConditionalConfig({
+                      ...conditionalConfig,
+                      dependsOn: e.target.value,
+                      showWhen: '', // Resetear showWhen cuando cambia el campo
+                    });
+                  }}
+                >
+                  {availableActivitiesForConditional.length === 0 ? (
+                    <MenuItem disabled>
+                      No hay campos disponibles. Agrega otros campos primero.
+                    </MenuItem>
+                  ) : (
+                    availableActivitiesForConditional.map((activity) => (
+                      <MenuItem key={activity.id} value={activity.id}>
+                        {activity.name} ({FIELD_TYPES.find(ft => ft.value === activity.fieldType)?.label || activity.fieldType})
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+                {availableActivitiesForConditional.length === 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    Necesitas crear otros campos en esta visita antes de poder crear un campo condicional.
+                  </Typography>
+                )}
+              </FormControl>
+
+              {conditionalConfig.dependsOn && (() => {
+                const dependsOnActivity = availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn);
+                if (!dependsOnActivity) return null;
+
+                // Si es boolean, mostrar opciones true/false
+                if (dependsOnActivity.fieldType === 'boolean') {
+                  return (
+                    <FormControl fullWidth>
+                      <InputLabel>Mostrar cuando el valor sea</InputLabel>
+                      <Select
+                        value={conditionalConfig.showWhen === true || conditionalConfig.showWhen === 'true' ? 'true' : conditionalConfig.showWhen === false || conditionalConfig.showWhen === 'false' ? 'false' : ''}
+                        label="Mostrar cuando el valor sea"
+                        onChange={(e) => {
+                          setConditionalConfig({
+                            ...conditionalConfig,
+                            showWhen: e.target.value === 'true',
+                          });
+                        }}
+                      >
+                        <MenuItem value="true">Sí / Verdadero</MenuItem>
+                        <MenuItem value="false">No / Falso</MenuItem>
+                      </Select>
+                    </FormControl>
+                  );
+                }
+
+                // Si es select_single o select_multiple, mostrar opciones
+                if (dependsOnActivity.fieldType === 'select_single' || dependsOnActivity.fieldType === 'select_multiple') {
+                  if (dependsOnActivity.options && dependsOnActivity.options.length > 0) {
+                    return (
+                      <FormControl fullWidth>
+                        <InputLabel>Mostrar cuando el valor sea</InputLabel>
+                        <Select
+                          value={conditionalConfig.showWhen || ''}
+                          label="Mostrar cuando el valor sea"
+                          onChange={(e) => {
+                            setConditionalConfig({
+                              ...conditionalConfig,
+                              showWhen: e.target.value,
+                            });
+                          }}
+                        >
+                          {dependsOnActivity.options.map((option) => (
+                            <MenuItem key={option.value} value={option.value}>
+                              {option.label}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    );
+                  } else {
+                    return (
+                      <TextField
+                        label="Mostrar cuando el valor sea"
+                        value={conditionalConfig.showWhen || ''}
+                        onChange={(e) => {
+                          setConditionalConfig({
+                            ...conditionalConfig,
+                            showWhen: e.target.value,
+                          });
+                        }}
+                        fullWidth
+                        placeholder="Ingresa el valor exacto"
+                        helperText="Ingresa el valor exacto que debe tener el campo para mostrar este campo condicional"
+                      />
+                    );
+                  }
+                }
+
+                // Para otros tipos (text, number, etc.), campo de texto libre
+                return (
+                  <TextField
+                    label="Mostrar cuando el valor sea"
+                    value={conditionalConfig.showWhen || ''}
+                    onChange={(e) => {
+                      setConditionalConfig({
+                        ...conditionalConfig,
+                        showWhen: e.target.value,
+                      });
+                    }}
+                    fullWidth
+                    placeholder="Ingresa el valor exacto"
+                    helperText="Este campo se mostrará solo cuando el campo seleccionado tenga exactamente este valor"
+                  />
+                );
+              })()}
+
+              {conditionalConfig.dependsOn && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="body2">
+                    Este campo se mostrará solo cuando <strong>{availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn)?.name}</strong> tenga el valor especificado.
+                  </Typography>
+                </Alert>
+              )}
+            </Box>
+          )}
+
           <Divider />
 
           {/* Opciones adicionales */}
@@ -765,6 +1128,7 @@ export const ActivityFormPage: React.FC = () => {
                     <Checkbox
                       checked={formData.allowMultiple}
                       onChange={(e) => setFormData({ ...formData, allowMultiple: e.target.checked })}
+                      disabled={formData.fieldType === 'calculated'} // Los campos calculados no pueden tener múltiples mediciones
                     />
                   }
                   label="Permitir Múltiples Mediciones (ej: tomar PA 3 veces)"
@@ -953,6 +1317,41 @@ export const ActivityFormPage: React.FC = () => {
               </Box>
             )}
             
+            {formData.fieldType === 'calculated' && (
+              <Box>
+                <TextField
+                  type="text"
+                  value={formData.calculationFormula ? '—' : ''}
+                  disabled
+                  size="small"
+                  fullWidth
+                  label="Valor Calculado"
+                  InputProps={{
+                    readOnly: true,
+                    startAdornment: formData.measurementUnit ? (
+                      <Box component="span" sx={{ mr: 1, color: 'text.secondary' }}>
+                        {formData.measurementUnit}
+                      </Box>
+                    ) : null,
+                  }}
+                  sx={{
+                    '& .MuiInputBase-input': {
+                      backgroundColor: 'action.hover',
+                      fontWeight: 'medium',
+                    },
+                  }}
+                  helperText={
+                    formData.calculationFormula
+                      ? `Se calculará automáticamente: ${formData.calculationFormula}`
+                      : 'Configura la fórmula para ver el cálculo'
+                  }
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Decimales: {formData.decimalPlaces}
+                </Typography>
+              </Box>
+            )}
+            
             {(formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple') && (
               <Box>
                 {options.length === 0 ? (
@@ -1015,6 +1414,29 @@ export const ActivityFormPage: React.FC = () => {
               <Button variant="outlined" disabled size="small">
                 Seleccionar archivo...
               </Button>
+            )}
+            
+            {formData.fieldType === 'conditional' && (
+              <Box>
+                {conditionalConfig.dependsOn ? (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    <Typography variant="body2">
+                      Este campo se mostrará solo cuando <strong>{availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn)?.name}</strong> tenga el valor: <strong>{typeof conditionalConfig.showWhen === 'boolean' ? (conditionalConfig.showWhen ? 'Sí/Verdadero' : 'No/Falso') : conditionalConfig.showWhen}</strong>
+                    </Typography>
+                  </Alert>
+                ) : (
+                  <Alert severity="warning">
+                    Configura la dependencia para ver la vista previa
+                  </Alert>
+                )}
+                <TextField
+                  fullWidth
+                  placeholder="Este campo aparecerá condicionalmente..."
+                  disabled
+                  size="small"
+                  helperText="El tipo de campo se determinará según el contexto"
+                />
+              </Box>
             )}
             
             {/* Campos de fecha y hora en la vista previa */}
