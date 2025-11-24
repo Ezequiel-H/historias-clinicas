@@ -32,7 +32,8 @@ export type FieldType =
   | 'datetime'             // Fecha y/o hora (configurable)
   | 'file'                 // Archivo adjunto
   | 'conditional'         // Campo condicional
-  | 'calculated';         // Campo calculado (se calcula automáticamente basado en otros campos)
+  | 'calculated'          // Campo calculado (se calcula automáticamente basado en otros campos)
+  | 'medication_tracking'; // Registro de medicación (adherencia al tratamiento)
 
 // Configuración de un campo compuesto
 export interface CompoundFieldConfig {
@@ -55,6 +56,19 @@ export interface SelectOption {
 export interface ConditionalConfig {
   dependsOn: string;        // ID del campo del que depende
   showWhen: string | boolean; // Valor que debe tener para mostrarse
+}
+
+// Configuración para el seguimiento de medicación
+export interface MedicationTrackingConfig {
+  medicationName: string;     // Nombre del medicamento
+  dosageUnit: string;         // Unidad de dosificación (ej: "comprimidos", "cápsulas", "ml")
+  frequency: {
+    amount: number;           // Cantidad por toma (ej: 1, 2)
+    interval: 'daily' | 'twice_daily' | 'three_times_daily' | 'every_x_hours' | 'weekly' | 'custom';
+    hoursInterval?: number;   // Solo si interval es 'every_x_hours'
+    customDescription?: string; // Solo si interval es 'custom'
+  };
+  expectedDailyDose?: number; // Dosis diaria esperada (calculada o manual)
 }
 
 export interface Activity {
@@ -95,6 +109,9 @@ export interface Activity {
   
   // Campo calculado (solo si fieldType === 'calculated')
   calculationFormula?: string; // Ej: "peso / altura" - fórmula para calcular el valor automáticamente
+  
+  // Configuración de seguimiento de medicación (solo si fieldType === 'medication_tracking')
+  medicationTrackingConfig?: MedicationTrackingConfig;
 }
 
 // Regla de validación para actividades

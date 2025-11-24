@@ -25,6 +25,9 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   CheckCircle as CheckCircleIcon,
+  Medication as MedicationIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
 } from '@mui/icons-material';
 import type { Activity, ActivityRule } from '../../types';
 
@@ -1432,6 +1435,228 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
               )}
             </Box>
           );
+
+        case 'medication_tracking': {
+          const config = activity.medicationTrackingConfig;
+          if (!config) {
+            return (
+              <Alert severity="warning">
+                No hay configuración de medicación. Edite la actividad para configurarla.
+              </Alert>
+            );
+          }
+          
+          // Obtener los valores del formulario
+          const medValue = typeof fieldValue === 'object' && fieldValue !== null ? fieldValue : {};
+          const lastVisitDate = medValue.lastVisitDate || '';
+          const unitsDelivered = parseFloat(medValue.unitsDelivered) || 0;
+          const unitsReturned = parseFloat(medValue.unitsReturned) || 0;
+          
+          // Calcular días desde la última visita
+          let daysSinceLastVisit = 0;
+          if (lastVisitDate) {
+            const lastDate = new Date(lastVisitDate);
+            const today = new Date();
+            const diffTime = Math.abs(today.getTime() - lastDate.getTime());
+            daysSinceLastVisit = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          }
+          
+          // Calcular dosis diaria esperada
+          const { amount, interval, hoursInterval } = config.frequency;
+          let dailyDoses = 1;
+          switch (interval) {
+            case 'daily': dailyDoses = 1; break;
+            case 'twice_daily': dailyDoses = 2; break;
+            case 'three_times_daily': dailyDoses = 3; break;
+            case 'every_x_hours': dailyDoses = hoursInterval ? Math.floor(24 / hoursInterval) : 1; break;
+            case 'weekly': dailyDoses = 1/7; break;
+            case 'custom': dailyDoses = config.expectedDailyDose || 1; break;
+          }
+          const dailyUnitsExpected = amount * dailyDoses;
+          
+          // Calcular unidades esperadas para el período
+          const expectedUnits = daysSinceLastVisit * dailyUnitsExpected;
+          
+          // Calcular consumo real
+          const actualConsumption = unitsDelivered - unitsReturned;
+          
+          // Calcular adherencia
+          const adherencePercentage = expectedUnits > 0 
+            ? Math.min(200, (actualConsumption / expectedUnits) * 100) 
+            : 0;
+          
+          // Determinar estado de adherencia
+          let adherenceStatus: 'good' | 'low' | 'high' | 'unknown' = 'unknown';
+          let adherenceColor = 'text.secondary';
+          let adherenceMessage = '';
+          
+          if (expectedUnits > 0 && unitsDelivered > 0) {
+            if (adherencePercentage >= 80 && adherencePercentage <= 120) {
+              adherenceStatus = 'good';
+              adherenceColor = 'success.main';
+              adherenceMessage = 'Adherencia adecuada al tratamiento';
+            } else if (adherencePercentage < 80) {
+              adherenceStatus = 'low';
+              adherenceColor = 'warning.main';
+              adherenceMessage = `Adherencia baja: el paciente consumió menos de lo esperado (${(expectedUnits - actualConsumption).toFixed(0)} ${config.dosageUnit} menos)`;
+            } else {
+              adherenceStatus = 'high';
+              adherenceColor = 'error.main';
+              adherenceMessage = `Consumo excesivo: el paciente consumió más de lo esperado (${(actualConsumption - expectedUnits).toFixed(0)} ${config.dosageUnit} de más)`;
+            }
+          }
+          
+          const handleMedChange = (field: string, value: any) => {
+            const newValue = { ...medValue, [field]: value };
+            handleChange(activity.id, newValue, index);
+          };
+          
+          return (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* Info del medicamento */}
+              <Alert severity="info" icon={<MedicationIcon />} sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight="bold">
+                      {config.medicationName || 'Medicamento'}
+                    </Typography>
+                    <Typography variant="body2">
+                      Dosis prescrita: {config.frequency.amount} {config.dosageUnit}{' '}
+                      {interval === 'daily' && 'una vez al día'}
+                      {interval === 'twice_daily' && 'dos veces al día'}
+                      {interval === 'three_times_daily' && 'tres veces al día'}
+                      {interval === 'every_x_hours' && `cada ${hoursInterval || '?'} horas`}
+                      {interval === 'weekly' && 'una vez por semana'}
+                      {interval === 'custom' && (config.frequency.customDescription || 'frecuencia personalizada')}
+                    </Typography>
+                  </Box>
+                  <Chip 
+                    label={`${dailyUnitsExpected.toFixed(dailyUnitsExpected % 1 === 0 ? 0 : 1)} ${config.dosageUnit}/día`}
+                    color="primary"
+                    size="small"
+                  />
+                </Box>
+              </Alert>
+              
+              {/* Campos de entrada */}
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
+                <TextField
+                  type="date"
+                  label="Fecha de la última visita"
+                  value={lastVisitDate}
+                  onChange={(e) => handleMedChange('lastVisitDate', e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                  error={showValidation && activity.required && !lastVisitDate}
+                  helperText={showValidation && activity.required && !lastVisitDate ? 'Campo requerido' : ''}
+                />
+                
+                <TextField
+                  type="number"
+                  label={`${config.dosageUnit.charAt(0).toUpperCase() + config.dosageUnit.slice(1)} entregados`}
+                  value={medValue.unitsDelivered || ''}
+                  onChange={(e) => handleMedChange('unitsDelivered', e.target.value)}
+                  inputProps={{ min: 0 }}
+                  fullWidth
+                  error={showValidation && activity.required && !medValue.unitsDelivered}
+                  helperText="Cantidad entregada en la última visita"
+                />
+                
+                <TextField
+                  type="number"
+                  label={`${config.dosageUnit.charAt(0).toUpperCase() + config.dosageUnit.slice(1)} devueltos hoy`}
+                  value={medValue.unitsReturned || ''}
+                  onChange={(e) => handleMedChange('unitsReturned', e.target.value)}
+                  inputProps={{ min: 0 }}
+                  fullWidth
+                  helperText="Cantidad que devuelve el paciente"
+                />
+              </Box>
+              
+              {/* Panel de cálculos */}
+              {(lastVisitDate || unitsDelivered > 0) && (
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: 2, 
+                    bgcolor: adherenceStatus === 'good' ? 'success.50' : 
+                             adherenceStatus === 'low' ? 'warning.50' : 
+                             adherenceStatus === 'high' ? 'error.50' : 'grey.50',
+                    borderColor: adherenceStatus === 'good' ? 'success.main' : 
+                                 adherenceStatus === 'low' ? 'warning.main' : 
+                                 adherenceStatus === 'high' ? 'error.main' : 'grey.300',
+                  }}
+                >
+                  <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    📊 Cálculo de Adherencia al Tratamiento
+                    {adherenceStatus === 'good' && <CheckCircleIcon color="success" fontSize="small" />}
+                    {adherenceStatus === 'low' && <TrendingDownIcon color="warning" fontSize="small" />}
+                    {adherenceStatus === 'high' && <TrendingUpIcon color="error" fontSize="small" />}
+                  </Typography>
+                  
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mt: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Días desde última visita:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="bold">
+                      {lastVisitDate ? `${daysSinceLastVisit} días` : '—'}
+                    </Typography>
+                    
+                    <Typography variant="body2" color="text.secondary">
+                      Dosis esperadas (teoría):
+                    </Typography>
+                    <Typography variant="body2" fontWeight="bold">
+                      {lastVisitDate ? `${expectedUnits.toFixed(0)} ${config.dosageUnit}` : '—'}
+                    </Typography>
+                    
+                    <Typography variant="body2" color="text.secondary">
+                      Consumo real (entregados − devueltos):
+                    </Typography>
+                    <Typography variant="body2" fontWeight="bold">
+                      {unitsDelivered > 0 ? `${actualConsumption.toFixed(0)} ${config.dosageUnit}` : '—'}
+                    </Typography>
+                    
+                    <Typography variant="body2" color="text.secondary">
+                      Porcentaje de adherencia:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="bold" sx={{ color: adherenceColor }}>
+                      {expectedUnits > 0 && unitsDelivered > 0 
+                        ? `${adherencePercentage.toFixed(1)}%` 
+                        : '—'}
+                    </Typography>
+                  </Box>
+                  
+                  {adherenceMessage && (
+                    <Alert 
+                      severity={adherenceStatus === 'good' ? 'success' : adherenceStatus === 'low' ? 'warning' : 'error'}
+                      sx={{ mt: 2 }}
+                    >
+                      {adherenceMessage}
+                    </Alert>
+                  )}
+                  
+                  {/* Diferencia detallada */}
+                  {expectedUnits > 0 && unitsDelivered > 0 && actualConsumption !== expectedUnits && (
+                    <Box sx={{ mt: 2, p: 1.5, bgcolor: 'background.paper', borderRadius: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        <strong>Análisis:</strong> Se esperaba un consumo de {expectedUnits.toFixed(0)} {config.dosageUnit} 
+                        ({dailyUnitsExpected.toFixed(1)}/día × {daysSinceLastVisit} días).
+                        El paciente consumió {actualConsumption.toFixed(0)} {config.dosageUnit} 
+                        (de {unitsDelivered} entregados, devolvió {unitsReturned}).
+                        {actualConsumption < expectedUnits && (
+                          <> Faltan {(expectedUnits - actualConsumption).toFixed(0)} {config.dosageUnit} por consumir.</>
+                        )}
+                        {actualConsumption > expectedUnits && (
+                          <> Consumió {(actualConsumption - expectedUnits).toFixed(0)} {config.dosageUnit} de más.</>
+                        )}
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              )}
+            </Box>
+          );
+        }
 
         default:
           return (
