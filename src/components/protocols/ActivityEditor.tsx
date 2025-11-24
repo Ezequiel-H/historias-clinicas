@@ -56,9 +56,7 @@ const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = 
   { value: 'select_single', label: 'Selección Única', description: 'Lista de opciones (una sola)' },
   { value: 'select_multiple', label: 'Selección Múltiple', description: 'Lista de opciones (varias)' },
   { value: 'boolean', label: 'Sí/No', description: 'Campo booleano' },
-  { value: 'date', label: 'Fecha', description: 'Selector de fecha' },
-  { value: 'time', label: 'Hora', description: 'Selector de hora' },
-  { value: 'datetime', label: 'Fecha y Hora', description: 'Selector combinado' },
+  { value: 'datetime', label: 'Fecha y/o Hora', description: 'Selector de fecha, hora o ambos (configurable)' },
   { value: 'file', label: 'Archivo Adjunto', description: 'Subir archivo (PDF, imagen, etc.)' },
   { value: 'conditional', label: 'Campo Condicional', description: 'Se muestra según otra respuesta' },
 ];

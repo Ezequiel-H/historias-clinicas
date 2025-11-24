@@ -105,25 +105,11 @@ const FIELD_TYPES = [
     color: '#f57c00',
   },
   {
-    value: 'date' as FieldType,
-    label: 'Fecha',
-    description: 'Selector de fecha',
+    value: 'datetime' as FieldType,
+    label: 'Fecha y/o Hora',
+    description: 'Selector de fecha, hora o ambos (configurable)',
     icon: <DateIcon />,
     color: '#0288d1',
-  },
-  {
-    value: 'time' as FieldType,
-    label: 'Hora',
-    description: 'Selector de hora',
-    icon: <DateIcon />,
-    color: '#0097a7',
-  },
-  {
-    value: 'datetime' as FieldType,
-    label: 'Fecha y Hora',
-    description: 'Selector de fecha y hora',
-    icon: <DateIcon />,
-    color: '#00acc1',
   },
   {
     value: 'file' as FieldType,
@@ -159,6 +145,8 @@ export const ActivityFormPage: React.FC = () => {
     allowMultiple: false,
     allowCustomOptions: false,
     repeatCount: 3,
+    datetimeIncludeDate: true, // Por defecto, incluir fecha en datetime
+    datetimeIncludeTime: false, // Por defecto, no incluir hora en datetime
     requireDate: false,
     requireTime: false,
     requireDatePerMeasurement: true, // Por defecto, fecha por cada medición
@@ -273,14 +261,37 @@ export const ActivityFormPage: React.FC = () => {
       const activity = visit.activities?.find((a) => a.id === activityId);
       
       if (activity) {
+        // Migrar tipos antiguos (date, time) a datetime con configuración
+        // Nota: Los tipos 'date' y 'time' ya no existen en el tipo FieldType, pero pueden venir del backend
+        let fieldType = activity.fieldType as FieldType | 'date' | 'time';
+        let datetimeIncludeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : true;
+        let datetimeIncludeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : false;
+        
+        // Migración de tipos antiguos (si vienen del backend)
+        if (fieldType === 'date' || (fieldType as string) === 'date') {
+          fieldType = 'datetime';
+          datetimeIncludeDate = true;
+          datetimeIncludeTime = false;
+        } else if (fieldType === 'time' || (fieldType as string) === 'time') {
+          fieldType = 'datetime';
+          datetimeIncludeDate = false;
+          datetimeIncludeTime = true;
+        } else if (fieldType === 'datetime') {
+          // Si ya es datetime, usar las propiedades si existen, sino valores por defecto
+          datetimeIncludeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : true;
+          datetimeIncludeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : true;
+        }
+        
         setFormData({
           name: activity.name,
           description: activity.description || '',
-          fieldType: activity.fieldType,
+          fieldType: fieldType,
           required: activity.required,
           allowMultiple: activity.allowMultiple || false,
           allowCustomOptions: activity.allowCustomOptions || false,
           repeatCount: activity.repeatCount || 3,
+          datetimeIncludeDate: datetimeIncludeDate,
+          datetimeIncludeTime: datetimeIncludeTime,
           requireDate: activity.requireDate || false,
           requireTime: activity.requireTime || false,
           requireDatePerMeasurement: activity.requireDatePerMeasurement !== undefined ? activity.requireDatePerMeasurement : true,
@@ -378,7 +389,13 @@ export const ActivityFormPage: React.FC = () => {
       activityData.repeatCount = formData.repeatCount;
     }
     
-    // Agregar campos de fecha y hora
+    // Agregar configuración de datetime
+    if (formData.fieldType === 'datetime') {
+      activityData.datetimeIncludeDate = formData.datetimeIncludeDate;
+      activityData.datetimeIncludeTime = formData.datetimeIncludeTime;
+    }
+    
+    // Agregar campos de fecha y hora (para otras actividades)
     if (formData.requireDate) {
       activityData.requireDate = formData.requireDate;
       if (formData.allowMultiple) {
@@ -651,6 +668,57 @@ export const ActivityFormPage: React.FC = () => {
           />
 
           <Divider />
+
+          {/* Configuración específica para datetime */}
+          {formData.fieldType === 'datetime' && (
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Configuración de Fecha y Hora
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Elegí qué componentes querés incluir en este campo
+              </Typography>
+              <Box display="flex" flexDirection="column" gap={1}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={formData.datetimeIncludeDate || false}
+                      onChange={(e) => {
+                        const newValue = e.target.checked;
+                        setFormData({ ...formData, datetimeIncludeDate: newValue });
+                        // Si se desmarca fecha y hora, asegurar que al menos uno esté marcado
+                        if (!newValue && !formData.datetimeIncludeTime) {
+                          setFormData({ ...formData, datetimeIncludeDate: false, datetimeIncludeTime: true });
+                        }
+                      }}
+                    />
+                  }
+                  label="Incluir selector de fecha"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={formData.datetimeIncludeTime || false}
+                      onChange={(e) => {
+                        const newValue = e.target.checked;
+                        setFormData({ ...formData, datetimeIncludeTime: newValue });
+                        // Si se desmarca fecha y hora, asegurar que al menos uno esté marcado
+                        if (!newValue && !formData.datetimeIncludeDate) {
+                          setFormData({ ...formData, datetimeIncludeDate: true, datetimeIncludeTime: false });
+                        }
+                      }}
+                    />
+                  }
+                  label="Incluir selector de hora"
+                />
+                {(!formData.datetimeIncludeDate && !formData.datetimeIncludeTime) && (
+                  <Alert severity="warning" sx={{ mt: 1 }}>
+                    Debes seleccionar al menos una opción (fecha o hora)
+                  </Alert>
+                )}
+              </Box>
+            </Box>
+          )}
 
           {/* Configuraciones específicas */}
           {needsUnit && (
@@ -1416,13 +1484,40 @@ export const ActivityFormPage: React.FC = () => {
               />
             )}
             
-            {(formData.fieldType === 'date' || formData.fieldType === 'time' || formData.fieldType === 'datetime') && (
-              <TextField
-                type={formData.fieldType === 'date' ? 'date' : formData.fieldType === 'time' ? 'time' : 'datetime-local'}
-                disabled
-                size="small"
-                sx={{ width: 250 }}
-              />
+            {formData.fieldType === 'datetime' && (
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                {formData.datetimeIncludeDate && (
+                  <TextField
+                    type="date"
+                    label="Fecha"
+                    disabled
+                    size="small"
+                    sx={{ minWidth: 200 }}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                )}
+                {formData.datetimeIncludeTime && (
+                  <TextField
+                    type="text"
+                    label="Hora"
+                    placeholder="HH:MM"
+                    disabled
+                    size="small"
+                    sx={{ minWidth: 200 }}
+                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ 
+                      maxLength: 5,
+                      pattern: '[0-9]{2}:[0-9]{2}'
+                    }}
+                    helperText="Formato: HH:MM (ej: 14:30)"
+                  />
+                )}
+                {!formData.datetimeIncludeDate && !formData.datetimeIncludeTime && (
+                  <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                    Selecciona al menos una opción (fecha o hora) en la configuración
+                  </Typography>
+                )}
+              </Box>
             )}
             
             {formData.fieldType === 'file' && (

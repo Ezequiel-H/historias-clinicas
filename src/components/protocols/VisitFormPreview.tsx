@@ -318,7 +318,95 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   /**
    * Valida que el campo requerido tenga un valor
    */
-  const validateRequired: ValidationFunction = (activity, value, _formValues, index) => {
+  const validateRequired: ValidationFunction = (activity, value, formValues, index) => {
+    // Para campos datetime, validar según datetimeIncludeDate y datetimeIncludeTime
+    if (activity.fieldType === 'datetime') {
+      const includeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : true;
+      const includeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : false;
+      
+      // Determinar las claves de fecha y hora
+      let dateKey: string;
+      let timeKey: string;
+      
+      if (activity.allowMultiple && index !== undefined) {
+        dateKey = `${activity.id}_date_${index}`;
+        timeKey = `${activity.id}_time_${index}`;
+      } else {
+        dateKey = `${activity.id}_date`;
+        timeKey = `${activity.id}_time`;
+      }
+      
+      const dateValue = formValues[dateKey];
+      const timeValue = formValues[timeKey];
+      
+      const hasDateValue = includeDate && dateValue !== undefined && dateValue !== null && dateValue !== '';
+      const hasTimeValue = includeTime && timeValue !== undefined && timeValue !== null && timeValue !== '';
+      
+      // Si requiere ambos, ambos deben estar presentes
+      if (includeDate && includeTime) {
+        if (hasDateValue && hasTimeValue) {
+          return { isValid: true };
+        }
+        return {
+          isValid: false,
+          error: {
+            activityId: activity.id,
+            activityName: activity.name,
+            rule: {
+              id: 'required',
+              name: 'Campo requerido',
+              condition: 'equals',
+              value: '',
+              severity: 'error',
+              message: `El campo "${activity.name}" requiere fecha y hora.`,
+              isActive: true,
+            },
+          },
+        };
+      }
+      
+      // Si solo requiere uno, ese debe estar presente
+      if (includeDate && !hasDateValue) {
+        return {
+          isValid: false,
+          error: {
+            activityId: activity.id,
+            activityName: activity.name,
+            rule: {
+              id: 'required',
+              name: 'Campo requerido',
+              condition: 'equals',
+              value: '',
+              severity: 'error',
+              message: `El campo "${activity.name}" requiere fecha.`,
+              isActive: true,
+            },
+          },
+        };
+      }
+      
+      if (includeTime && !hasTimeValue) {
+        return {
+          isValid: false,
+          error: {
+            activityId: activity.id,
+            activityName: activity.name,
+            rule: {
+              id: 'required',
+              name: 'Campo requerido',
+              condition: 'equals',
+              value: '',
+              severity: 'error',
+              message: `El campo "${activity.name}" requiere hora.`,
+              isActive: true,
+            },
+          },
+        };
+      }
+      
+      return { isValid: true };
+    }
+    
     // Para campos repetibles con índice específico, validar solo esa medición
     if (activity.allowMultiple && index !== undefined) {
       const measurementValue = Array.isArray(value) ? value[index] : undefined;
@@ -1144,43 +1232,77 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             />
           );
 
-        case 'date':
-          return (
-            <TextField
-              type="date"
-              value={fieldValue || ''}
-              onChange={(e) => handleChange(activity.id, e.target.value, index)}
-              InputLabelProps={{ shrink: true }}
-              error={showValidation && activity.required && !fieldValue}
-              helperText={showValidation && activity.required && !fieldValue ? 'Campo requerido' : ''}
-              sx={{ width: 250 }}
-            />
-          );
-
-        case 'time':
-          return (
-            <TextField
-              type="time"
-              value={fieldValue || ''}
-              onChange={(e) => handleChange(activity.id, e.target.value, index)}
-              InputLabelProps={{ shrink: true }}
-              error={showValidation && activity.required && !fieldValue}
-              helperText={showValidation && activity.required && !fieldValue ? 'Campo requerido' : ''}
-              sx={{ width: 250 }}
-            />
-          );
-
         case 'datetime':
+          // Manejar migración de tipos antiguos (date, time) a datetime
+          // Si vienen del backend con tipos antiguos, migrarlos
+          const isOldDate = (activity.fieldType as string) === 'date';
+          const isOldTime = (activity.fieldType as string) === 'time';
+          
+          const includeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : 
+                            (isOldDate || (activity.fieldType === 'datetime' && activity.datetimeIncludeDate !== false));
+          const includeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : 
+                            (isOldTime || (activity.fieldType === 'datetime' && activity.datetimeIncludeTime !== false));
+          
+          // Obtener valores de fecha y hora si existen
+          const dateKey = index !== undefined ? `${activity.id}_date_${index}` : `${activity.id}_date`;
+          const timeKey = index !== undefined ? `${activity.id}_time_${index}` : `${activity.id}_time`;
+          const dateValue = formValues[dateKey] || '';
+          const timeValue = formValues[timeKey] || '';
+          
+          // Si solo hay uno, usar el valor principal
+          const hasDateValue = dateValue !== '';
+          const hasTimeValue = timeValue !== '';
+          
           return (
-            <TextField
-              type="datetime-local"
-              value={fieldValue || ''}
-              onChange={(e) => handleChange(activity.id, e.target.value, index)}
-              InputLabelProps={{ shrink: true }}
-              error={showValidation && activity.required && !fieldValue}
-              helperText={showValidation && activity.required && !fieldValue ? 'Campo requerido' : ''}
-              sx={{ width: 250 }}
-            />
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              {includeDate && (
+                <TextField
+                  type="date"
+                  label="Fecha"
+                  value={dateValue}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    handleChange(dateKey, newValue, undefined);
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  error={showValidation && activity.required && includeDate && !dateValue}
+                  helperText={showValidation && activity.required && includeDate && !dateValue ? 'Campo requerido' : ''}
+                  sx={{ minWidth: 200 }}
+                />
+              )}
+              {includeTime && (
+                <TextField
+                  type="text"
+                  label="Hora"
+                  placeholder="HH:MM"
+                  value={normalizeTime(timeValue)}
+                  onChange={(e) => {
+                    const formatted = formatTimeInput(e.target.value);
+                    handleChange(timeKey, formatted, undefined);
+                  }}
+                  onBlur={(e) => {
+                    const timeValueNormalized = normalizeTime(e.target.value);
+                    if (timeValueNormalized && !isValidTime(timeValueNormalized)) {
+                      handleChange(timeKey, '', undefined);
+                    } else {
+                      handleChange(timeKey, timeValueNormalized, undefined);
+                    }
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ 
+                    maxLength: 5,
+                    pattern: '[0-9]{2}:[0-9]{2}'
+                  }}
+                  error={showValidation && activity.required && includeTime && !timeValue}
+                  helperText={
+                    showValidation && activity.required && includeTime && !timeValue 
+                      ? 'Campo requerido' 
+                      : 'Formato: HH:MM (ej: 14:30)'
+                  }
+                  sx={{ minWidth: 200 }}
+                />
+              )}
+            </Box>
           );
 
         case 'file':

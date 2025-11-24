@@ -30,9 +30,7 @@ export type FieldType =
   | 'select_single'        // Selección única (radio/select)
   | 'select_multiple'      // Selección múltiple (checkbox)
   | 'boolean'              // Sí/No
-  | 'date'                 // Fecha
-  | 'time'                 // Hora
-  | 'datetime'             // Fecha y hora
+  | 'datetime'             // Fecha y/o hora (configurable)
   | 'file'                 // Archivo adjunto
   | 'conditional'         // Campo condicional
   | 'calculated';         // Campo calculado (se calcula automáticamente basado en otros campos)
@@ -80,6 +78,9 @@ export interface Activity {
   conditionalConfig?: ConditionalConfig; // Para conditional
   allowMultiple?: boolean;            // Para campos repetibles (múltiples mediciones)
   repeatCount?: number;               // Número de veces que se debe repetir (default: 3)
+  // Configuración para tipo datetime
+  datetimeIncludeDate?: boolean;       // Si true, incluye selector de fecha (solo si fieldType === 'datetime')
+  datetimeIncludeTime?: boolean;       // Si true, incluye selector de hora (solo si fieldType === 'datetime')
   requireDate?: boolean;              // Solicitar fecha en que se realizó la actividad
   requireTime?: boolean;             // Solicitar hora en que se realizó la actividad
   requireDatePerMeasurement?: boolean; // Si true, fecha por cada medición; si false, una fecha para todas (solo si allowMultiple)
