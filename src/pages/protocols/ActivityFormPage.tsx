@@ -48,7 +48,6 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   CheckCircle as CheckCircleIcon,
-  Visibility as VisibilityIcon,
   Code as CodeIcon,
   Link as LinkIcon,
 } from '@mui/icons-material';
@@ -134,13 +133,6 @@ const FIELD_TYPES = [
     color: '#d32f2f',
   },
   {
-    value: 'conditional' as FieldType,
-    label: 'Campo Condicional',
-    description: 'Se muestra solo cuando otro campo tiene un valor específico',
-    icon: <LinkIcon />,
-    color: '#9c27b0',
-  },
-  {
     value: 'calculated' as FieldType,
     label: 'Campo Calculado',
     description: 'Se calcula automáticamente basado en otros campos',
@@ -171,7 +163,7 @@ export const ActivityFormPage: React.FC = () => {
     requireTime: false,
     requireDatePerMeasurement: true, // Por defecto, fecha por cada medición
     requireTimePerMeasurement: true, // Por defecto, hora por cada medición
-    timeIntervalMinutes: undefined, // Intervalo fijo entre mediciones (en minutos)
+    timeIntervalMinutes: undefined as number | undefined, // Intervalo fijo entre mediciones (en minutos)
     measurementUnit: '',
     decimalPlaces: 2,
     helpText: '',
@@ -186,6 +178,7 @@ export const ActivityFormPage: React.FC = () => {
     dependsOn: '',
     showWhen: '',
   });
+  const [isConditionalEnabled, setIsConditionalEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
@@ -204,15 +197,12 @@ export const ActivityFormPage: React.FC = () => {
     }
   }, [isEditMode, protocolId, visitId, activityId]);
 
-  // Resetear configuración condicional cuando cambia el tipo de campo
+  // Cargar actividades disponibles cuando se necesita para campos condicionales
   useEffect(() => {
-    if (formData.fieldType !== 'conditional') {
-      setConditionalConfig({ dependsOn: '', showWhen: '' });
-    } else if (formData.fieldType === 'conditional' && protocolId && visitId) {
-      // Cargar actividades disponibles cuando se selecciona conditional
+    if (protocolId && visitId && formData.fieldType) {
       loadAvailableActivities();
     }
-  }, [formData.fieldType]);
+  }, [protocolId, visitId]);
 
   const loadAvailableActivities = async () => {
     try {
@@ -228,9 +218,9 @@ export const ActivityFormPage: React.FC = () => {
           .map((a) => a.name);
         setAvailableActivities(numericActivities);
         
-        // Cargar todas las actividades para campos condicionales (excluyendo condicionales y calculados)
+        // Cargar todas las actividades para campos condicionales (excluyendo calculados, que no pueden ser dependencias)
         const activitiesForConditional = visit.activities
-          .filter((a) => a.fieldType !== 'conditional' && a.fieldType !== 'calculated')
+          .filter((a) => a.fieldType !== 'calculated')
           .map((a) => ({
             id: a.id,
             name: a.name,
@@ -268,15 +258,15 @@ export const ActivityFormPage: React.FC = () => {
         .map((a) => a.name) || [];
       setAvailableActivities(otherActivities);
       
-      // Cargar todas las actividades para campos condicionales (excluyendo la actual, condicionales y calculados)
-      const activitiesForConditional = visit.activities
-        ?.filter((a) => a.id !== activityId && a.fieldType !== 'conditional' && a.fieldType !== 'calculated')
-        .map((a) => ({
-          id: a.id,
-          name: a.name,
-          fieldType: a.fieldType,
-          options: a.options,
-        })) || [];
+        // Cargar todas las actividades para campos condicionales (excluyendo la actual y calculados, que no pueden ser dependencias)
+        const activitiesForConditional = visit.activities
+          ?.filter((a) => a.id !== activityId && a.fieldType !== 'calculated')
+          .map((a) => ({
+            id: a.id,
+            name: a.name,
+            fieldType: a.fieldType,
+            options: a.options,
+          })) || [];
       setAvailableActivitiesForConditional(activitiesForConditional);
       
       // Buscar la actividad
@@ -295,7 +285,7 @@ export const ActivityFormPage: React.FC = () => {
           requireTime: activity.requireTime || false,
           requireDatePerMeasurement: activity.requireDatePerMeasurement !== undefined ? activity.requireDatePerMeasurement : true,
           requireTimePerMeasurement: activity.requireTimePerMeasurement !== undefined ? activity.requireTimePerMeasurement : true,
-          timeIntervalMinutes: activity.timeIntervalMinutes,
+          timeIntervalMinutes: activity.timeIntervalMinutes || undefined,
           measurementUnit: activity.measurementUnit || '',
           decimalPlaces: activity.decimalPlaces ?? 2,
           helpText: activity.helpText || '',
@@ -326,8 +316,10 @@ export const ActivityFormPage: React.FC = () => {
             dependsOn: activity.conditionalConfig.dependsOn || '',
             showWhen: activity.conditionalConfig.showWhen || '',
           });
+          setIsConditionalEnabled(!!activity.conditionalConfig.dependsOn);
         } else {
           setConditionalConfig({ dependsOn: '', showWhen: '' });
+          setIsConditionalEnabled(false);
         }
       } else {
         setError('Actividad no encontrada');
@@ -343,14 +335,6 @@ export const ActivityFormPage: React.FC = () => {
   const handleSelectType = (type: FieldType) => {
     setFormData({ ...formData, fieldType: type });
     setStep('config');
-    // Si es conditional, asegurar que se carguen las actividades disponibles
-    if (type === 'conditional' && protocolId && visitId) {
-      loadAvailableActivities();
-    }
-    // Resetear configuración condicional si no es conditional
-    if (type !== 'conditional') {
-      setConditionalConfig({ dependsOn: '', showWhen: '' });
-    }
   };
 
   const parseOptions = (text: string): SelectOption[] => {
@@ -443,8 +427,8 @@ export const ActivityFormPage: React.FC = () => {
       activityData.calculationFormula = formData.calculationFormula.trim();
     }
 
-    // Agregar configuración condicional si es campo condicional
-    if (formData.fieldType === 'conditional' && conditionalConfig.dependsOn) {
+    // Agregar configuración condicional si está habilitada y configurada (para cualquier tipo de campo)
+    if (isConditionalEnabled && conditionalConfig.dependsOn) {
       // Convertir showWhen a boolean si es necesario
       let showWhenValue: string | boolean = conditionalConfig.showWhen;
       if (typeof conditionalConfig.showWhen === 'string') {
@@ -965,146 +949,6 @@ export const ActivityFormPage: React.FC = () => {
             </Box>
           )}
 
-          {/* Configuración condicional para campos condicionales */}
-          {formData.fieldType === 'conditional' && (
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1, border: '1px solid', borderColor: 'info.main' }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Configuración Condicional
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-                Este campo se mostrará solo cuando otro campo tenga un valor específico.
-              </Typography>
-              
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel>Depende de (Campo)</InputLabel>
-                <Select
-                  value={conditionalConfig.dependsOn}
-                  label="Depende de (Campo)"
-                  onChange={(e) => {
-                    const selectedActivity = availableActivitiesForConditional.find(a => a.id === e.target.value);
-                    setConditionalConfig({
-                      ...conditionalConfig,
-                      dependsOn: e.target.value,
-                      showWhen: '', // Resetear showWhen cuando cambia el campo
-                    });
-                  }}
-                >
-                  {availableActivitiesForConditional.length === 0 ? (
-                    <MenuItem disabled>
-                      No hay campos disponibles. Agrega otros campos primero.
-                    </MenuItem>
-                  ) : (
-                    availableActivitiesForConditional.map((activity) => (
-                      <MenuItem key={activity.id} value={activity.id}>
-                        {activity.name} ({FIELD_TYPES.find(ft => ft.value === activity.fieldType)?.label || activity.fieldType})
-                      </MenuItem>
-                    ))
-                  )}
-                </Select>
-                {availableActivitiesForConditional.length === 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Necesitas crear otros campos en esta visita antes de poder crear un campo condicional.
-                  </Typography>
-                )}
-              </FormControl>
-
-              {conditionalConfig.dependsOn && (() => {
-                const dependsOnActivity = availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn);
-                if (!dependsOnActivity) return null;
-
-                // Si es boolean, mostrar opciones true/false
-                if (dependsOnActivity.fieldType === 'boolean') {
-                  return (
-                    <FormControl fullWidth>
-                      <InputLabel>Mostrar cuando el valor sea</InputLabel>
-                      <Select
-                        value={conditionalConfig.showWhen === true || conditionalConfig.showWhen === 'true' ? 'true' : conditionalConfig.showWhen === false || conditionalConfig.showWhen === 'false' ? 'false' : ''}
-                        label="Mostrar cuando el valor sea"
-                        onChange={(e) => {
-                          setConditionalConfig({
-                            ...conditionalConfig,
-                            showWhen: e.target.value === 'true',
-                          });
-                        }}
-                      >
-                        <MenuItem value="true">Sí / Verdadero</MenuItem>
-                        <MenuItem value="false">No / Falso</MenuItem>
-                      </Select>
-                    </FormControl>
-                  );
-                }
-
-                // Si es select_single o select_multiple, mostrar opciones
-                if (dependsOnActivity.fieldType === 'select_single' || dependsOnActivity.fieldType === 'select_multiple') {
-                  if (dependsOnActivity.options && dependsOnActivity.options.length > 0) {
-                    return (
-                      <FormControl fullWidth>
-                        <InputLabel>Mostrar cuando el valor sea</InputLabel>
-                        <Select
-                          value={conditionalConfig.showWhen || ''}
-                          label="Mostrar cuando el valor sea"
-                          onChange={(e) => {
-                            setConditionalConfig({
-                              ...conditionalConfig,
-                              showWhen: e.target.value,
-                            });
-                          }}
-                        >
-                          {dependsOnActivity.options.map((option) => (
-                            <MenuItem key={option.value} value={option.value}>
-                              {option.label}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    );
-                  } else {
-                    return (
-                      <TextField
-                        label="Mostrar cuando el valor sea"
-                        value={conditionalConfig.showWhen || ''}
-                        onChange={(e) => {
-                          setConditionalConfig({
-                            ...conditionalConfig,
-                            showWhen: e.target.value,
-                          });
-                        }}
-                        fullWidth
-                        placeholder="Ingresa el valor exacto"
-                        helperText="Ingresa el valor exacto que debe tener el campo para mostrar este campo condicional"
-                      />
-                    );
-                  }
-                }
-
-                // Para otros tipos (text, number, etc.), campo de texto libre
-                return (
-                  <TextField
-                    label="Mostrar cuando el valor sea"
-                    value={conditionalConfig.showWhen || ''}
-                    onChange={(e) => {
-                      setConditionalConfig({
-                        ...conditionalConfig,
-                        showWhen: e.target.value,
-                      });
-                    }}
-                    fullWidth
-                    placeholder="Ingresa el valor exacto"
-                    helperText="Este campo se mostrará solo cuando el campo seleccionado tenga exactamente este valor"
-                  />
-                );
-              })()}
-
-              {conditionalConfig.dependsOn && (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  <Typography variant="body2">
-                    Este campo se mostrará solo cuando <strong>{availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn)?.name}</strong> tenga el valor especificado.
-                  </Typography>
-                </Alert>
-              )}
-            </Box>
-          )}
-
           <Divider />
 
           {/* Opciones adicionales */}
@@ -1182,6 +1026,160 @@ export const ActivityFormPage: React.FC = () => {
                 label="Solicitar hora en que se realizó la actividad"
               />
             </Box>
+
+            {/* Configuración condicional - disponible para cualquier tipo de campo (excepto calculated) */}
+            {formData.fieldType !== 'calculated' && (
+              <>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={isConditionalEnabled}
+                      onChange={(e) => {
+                        setIsConditionalEnabled(e.target.checked);
+                        if (!e.target.checked) {
+                          // Si se desmarca, limpiar la configuración
+                          setConditionalConfig({ dependsOn: '', showWhen: '' });
+                        }
+                      }}
+                    />
+                  }
+                  label="Campo Condicional (se muestra solo cuando otro campo tenga un valor específico)"
+                />
+                
+                {isConditionalEnabled && (
+                  <Box sx={{ ml: 4, mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <InputLabel>Depende de (Campo)</InputLabel>
+                      <Select
+                        value={conditionalConfig.dependsOn}
+                        label="Depende de (Campo)"
+                        onChange={(e) => {
+                          setConditionalConfig({
+                            ...conditionalConfig,
+                            dependsOn: e.target.value,
+                            showWhen: '', // Resetear showWhen cuando cambia el campo
+                          });
+                        }}
+                      >
+                        {availableActivitiesForConditional.length === 0 ? (
+                          <MenuItem disabled>
+                            No hay campos disponibles. Agrega otros campos primero.
+                          </MenuItem>
+                        ) : (
+                          availableActivitiesForConditional.map((activity) => (
+                            <MenuItem key={activity.id} value={activity.id}>
+                              {activity.name} ({FIELD_TYPES.find(ft => ft.value === activity.fieldType)?.label || activity.fieldType})
+                            </MenuItem>
+                          ))
+                        )}
+                      </Select>
+                      {availableActivitiesForConditional.length === 0 && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                          Necesitas crear otros campos en esta visita antes de poder configurar una condición.
+                        </Typography>
+                      )}
+                    </FormControl>
+
+                    {conditionalConfig.dependsOn && (() => {
+                      const dependsOnActivity = availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn);
+                      if (!dependsOnActivity) return null;
+
+                      // Si es boolean, mostrar opciones true/false
+                      if (dependsOnActivity.fieldType === 'boolean') {
+                        return (
+                          <FormControl fullWidth>
+                            <InputLabel>Mostrar cuando el valor sea</InputLabel>
+                            <Select
+                              value={conditionalConfig.showWhen === true || conditionalConfig.showWhen === 'true' ? 'true' : conditionalConfig.showWhen === false || conditionalConfig.showWhen === 'false' ? 'false' : ''}
+                              label="Mostrar cuando el valor sea"
+                              onChange={(e) => {
+                                setConditionalConfig({
+                                  ...conditionalConfig,
+                                  showWhen: e.target.value === 'true',
+                                });
+                              }}
+                            >
+                              <MenuItem value="true">Sí / Verdadero</MenuItem>
+                              <MenuItem value="false">No / Falso</MenuItem>
+                            </Select>
+                          </FormControl>
+                        );
+                      }
+
+                      // Si es select_single o select_multiple, mostrar opciones
+                      if (dependsOnActivity.fieldType === 'select_single' || dependsOnActivity.fieldType === 'select_multiple') {
+                        if (dependsOnActivity.options && dependsOnActivity.options.length > 0) {
+                          return (
+                            <FormControl fullWidth>
+                              <InputLabel>Mostrar cuando el valor sea</InputLabel>
+                              <Select
+                                value={conditionalConfig.showWhen || ''}
+                                label="Mostrar cuando el valor sea"
+                                onChange={(e) => {
+                                  setConditionalConfig({
+                                    ...conditionalConfig,
+                                    showWhen: e.target.value,
+                                  });
+                                }}
+                              >
+                                {dependsOnActivity.options.map((option) => (
+                                  <MenuItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          );
+                        } else {
+                          return (
+                            <TextField
+                              label="Mostrar cuando el valor sea"
+                              value={conditionalConfig.showWhen || ''}
+                              onChange={(e) => {
+                                setConditionalConfig({
+                                  ...conditionalConfig,
+                                  showWhen: e.target.value,
+                                });
+                              }}
+                              fullWidth
+                              size="small"
+                              placeholder="Ingresa el valor exacto"
+                              helperText="Ingresa el valor exacto que debe tener el campo para mostrar este campo condicional"
+                            />
+                          );
+                        }
+                      }
+
+                      // Para otros tipos (text, number, etc.), campo de texto libre
+                      return (
+                        <TextField
+                          label="Mostrar cuando el valor sea"
+                          value={conditionalConfig.showWhen || ''}
+                          onChange={(e) => {
+                            setConditionalConfig({
+                              ...conditionalConfig,
+                              showWhen: e.target.value,
+                            });
+                          }}
+                          fullWidth
+                          size="small"
+                          placeholder="Ingresa el valor exacto"
+                          helperText="Este campo se mostrará solo cuando el campo seleccionado tenga exactamente este valor"
+                        />
+                      );
+                    })()}
+
+                    {conditionalConfig.dependsOn && (
+                      <Alert severity="info" sx={{ mt: 2 }}>
+                        <Typography variant="body2">
+                          Este campo se mostrará solo cuando <strong>{availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn)?.name}</strong> tenga el valor especificado.
+                        </Typography>
+                      </Alert>
+                    )}
+                  </Box>
+                )}
+              </>
+            )}
             
             {/* Opciones de fecha/hora por medición - solo si allowMultiple está marcado */}
             {formData.allowMultiple && (formData.requireDate || formData.requireTime) && (
@@ -1267,7 +1265,24 @@ export const ActivityFormPage: React.FC = () => {
                 variant="outlined"
               />
             )}
+            {conditionalConfig.dependsOn && (
+              <Chip 
+                label="Condicional" 
+                size="small" 
+                sx={{ ml: 1 }} 
+                color="secondary"
+                variant="outlined"
+                icon={<LinkIcon />}
+              />
+            )}
           </Typography>
+          {conditionalConfig.dependsOn && (
+            <Alert severity="info" sx={{ mb: 2, mt: 1 }}>
+              <Typography variant="body2">
+                Este campo se mostrará solo cuando <strong>{availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn)?.name}</strong> tenga el valor: <strong>{typeof conditionalConfig.showWhen === 'boolean' ? (conditionalConfig.showWhen ? 'Sí/Verdadero' : 'No/Falso') : conditionalConfig.showWhen}</strong>
+              </Typography>
+            </Alert>
+          )}
           {formData.description && (
             <Typography variant="body2" color="text.secondary" gutterBottom>
               {formData.description}
@@ -1414,29 +1429,6 @@ export const ActivityFormPage: React.FC = () => {
               <Button variant="outlined" disabled size="small">
                 Seleccionar archivo...
               </Button>
-            )}
-            
-            {formData.fieldType === 'conditional' && (
-              <Box>
-                {conditionalConfig.dependsOn ? (
-                  <Alert severity="info" sx={{ mb: 2 }}>
-                    <Typography variant="body2">
-                      Este campo se mostrará solo cuando <strong>{availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn)?.name}</strong> tenga el valor: <strong>{typeof conditionalConfig.showWhen === 'boolean' ? (conditionalConfig.showWhen ? 'Sí/Verdadero' : 'No/Falso') : conditionalConfig.showWhen}</strong>
-                    </Typography>
-                  </Alert>
-                ) : (
-                  <Alert severity="warning">
-                    Configura la dependencia para ver la vista previa
-                  </Alert>
-                )}
-                <TextField
-                  fullWidth
-                  placeholder="Este campo aparecerá condicionalmente..."
-                  disabled
-                  size="small"
-                  helperText="El tipo de campo se determinará según el contexto"
-                />
-              </Box>
             )}
             
             {/* Campos de fecha y hora en la vista previa */}
