@@ -1164,60 +1164,108 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             </Box>
           );
 
-        case 'select_single':
+        case 'number_compound': {
+          // El valor debe ser un objeto con las claves de los campos compuestos
+          const compoundValue = (typeof fieldValue === 'object' && fieldValue !== null && !Array.isArray(fieldValue))
+            ? fieldValue
+            : {};
+          
+          const compoundConfig = activity.compoundConfig;
+          const fields = compoundConfig?.fields || [];
+          
+          const handleCompoundChange = (fieldName: string, value: string) => {
+            const newCompoundValue = { ...compoundValue, [fieldName]: value };
+            handleChange(activity.id, newCompoundValue, index);
+          };
+          
           return (
-            <FormControl component="fieldset" error={showValidation && activity.required && !fieldValue}>
-              <RadioGroup
-                value={fieldValue || ''}
-                onChange={(e) => handleChange(activity.id, e.target.value, index)}
-              >
-                {activity.options?.map((option) => (
-                  <FormControlLabel
-                    key={option.value}
-                    value={option.value}
-                    control={<Radio />}
-                    label={option.label}
-                  />
-                ))}
-              </RadioGroup>
-              {showValidation && activity.required && !fieldValue && (
-                <Typography variant="caption" color="error">
-                  Campo requerido
-                </Typography>
-              )}
-            </FormControl>
-          );
-
-        case 'select_multiple':
-          return (
-            <FormControl component="fieldset" error={showValidation && activity.required && (!fieldValue || fieldValue.length === 0)}>
-              <FormGroup>
-                {activity.options?.map((option) => (
-                  <FormControlLabel
-                    key={option.value}
-                    control={
-                      <Checkbox
-                        checked={Array.isArray(fieldValue) && fieldValue.includes(option.value)}
-                        onChange={(e) => {
-                          const currentValues = Array.isArray(fieldValue) ? fieldValue : [];
-                          const newValues = e.target.checked
-                            ? [...currentValues, option.value]
-                            : currentValues.filter(v => v !== option.value);
-                          handleChange(activity.id, newValues, index);
-                        }}
-                      />
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              {fields.length > 0 ? (
+                fields.map((field) => (
+                  <TextField
+                    key={field.name}
+                    type="number"
+                    label={field.label}
+                    value={compoundValue[field.name] || ''}
+                    onChange={(e) => handleCompoundChange(field.name, e.target.value)}
+                    placeholder="0"
+                    error={showValidation && activity.required && (!compoundValue[field.name] || compoundValue[field.name] === '')}
+                    helperText={
+                      showValidation && activity.required && (!compoundValue[field.name] || compoundValue[field.name] === '')
+                        ? 'Campo requerido'
+                        : ''
                     }
-                    label={option.label}
+                    InputProps={{
+                      endAdornment: field.unit ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                          {field.unit}
+                        </Typography>
+                      ) : null,
+                    }}
+                    sx={{ minWidth: 200 }}
                   />
-                ))}
-              </FormGroup>
-              {showValidation && activity.required && (!fieldValue || fieldValue.length === 0) && (
+                ))
+              ) : (
+                <Alert severity="warning">
+                  No hay campos configurados para este número compuesto. Configure los campos en la edición de la actividad.
+                </Alert>
+              )}
+            </Box>
+          );
+        }
+
+        case 'select_single': {
+          const isMultiple = activity.selectMultiple === true;
+          const hasError = isMultiple
+            ? showValidation && activity.required && (!fieldValue || fieldValue.length === 0)
+            : showValidation && activity.required && !fieldValue;
+          
+          return (
+            <FormControl component="fieldset" error={hasError}>
+              {isMultiple ? (
+                <FormGroup>
+                  {activity.options?.map((option) => (
+                    <FormControlLabel
+                      key={option.value}
+                      control={
+                        <Checkbox
+                          checked={Array.isArray(fieldValue) && fieldValue.includes(option.value)}
+                          onChange={(e) => {
+                            const currentValues = Array.isArray(fieldValue) ? fieldValue : [];
+                            const newValues = e.target.checked
+                              ? [...currentValues, option.value]
+                              : currentValues.filter(v => v !== option.value);
+                            handleChange(activity.id, newValues, index);
+                          }}
+                        />
+                      }
+                      label={option.label}
+                    />
+                  ))}
+                </FormGroup>
+              ) : (
+                <RadioGroup
+                  value={fieldValue || ''}
+                  onChange={(e) => handleChange(activity.id, e.target.value, index)}
+                >
+                  {activity.options?.map((option) => (
+                    <FormControlLabel
+                      key={option.value}
+                      value={option.value}
+                      control={<Radio />}
+                      label={option.label}
+                    />
+                  ))}
+                </RadioGroup>
+              )}
+              {hasError && (
                 <Typography variant="caption" color="error">
                   Campo requerido
                 </Typography>
               )}
             </FormControl>
           );
+        }
 
         case 'boolean':
           return (

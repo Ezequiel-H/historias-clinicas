@@ -85,17 +85,10 @@ const FIELD_TYPES = [
   },
   {
     value: 'select_single' as FieldType,
-    label: 'Selección Única',
-    description: 'Lista de opciones (elegir una)',
+    label: 'Selección',
+    description: 'Lista de opciones (configurable: única o múltiple)',
     icon: <CheckboxIcon />,
     color: '#7b1fa2',
-  },
-  {
-    value: 'select_multiple' as FieldType,
-    label: 'Selección Múltiple',
-    description: 'Lista de opciones (elegir varias)',
-    icon: <CheckboxIcon />,
-    color: '#8e24aa',
   },
   {
     value: 'boolean' as FieldType,
@@ -143,6 +136,7 @@ export const ActivityFormPage: React.FC = () => {
     fieldType: '' as FieldType | '',
     required: false,
     allowMultiple: false,
+    selectMultiple: false, // Para select_single: si true, permite selección múltiple
     allowCustomOptions: false,
     repeatCount: 3,
     datetimeIncludeDate: true, // Por defecto, incluir fecha en datetime
@@ -167,6 +161,7 @@ export const ActivityFormPage: React.FC = () => {
     showWhen: '',
   });
   const [isConditionalEnabled, setIsConditionalEnabled] = useState(false);
+  const [compoundFields, setCompoundFields] = useState<Array<{name: string, label: string, unit?: string}>>([]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
@@ -263,9 +258,10 @@ export const ActivityFormPage: React.FC = () => {
       if (activity) {
         // Migrar tipos antiguos (date, time) a datetime con configuración
         // Nota: Los tipos 'date' y 'time' ya no existen en el tipo FieldType, pero pueden venir del backend
-        let fieldType = activity.fieldType as FieldType | 'date' | 'time';
+        let fieldType = activity.fieldType as FieldType | 'date' | 'time' | 'select_multiple';
         let datetimeIncludeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : true;
         let datetimeIncludeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : false;
+        let selectMultiple = false;
         
         // Migración de tipos antiguos (si vienen del backend)
         if (fieldType === 'date' || (fieldType as string) === 'date') {
@@ -280,6 +276,17 @@ export const ActivityFormPage: React.FC = () => {
           // Si ya es datetime, usar las propiedades si existen, sino valores por defecto
           datetimeIncludeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : true;
           datetimeIncludeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : true;
+        } else if (fieldType === 'select_multiple' || (fieldType as string) === 'select_multiple') {
+          // Migrar select_multiple a select_single con selectMultiple = true
+          fieldType = 'select_single';
+          selectMultiple = true;
+        }
+        
+        // Si es select_single, cargar selectMultiple de la actividad (puede venir del backend actualizado)
+        if (fieldType === 'select_single') {
+          selectMultiple = (activity as any).selectMultiple !== undefined 
+            ? (activity as any).selectMultiple 
+            : selectMultiple; // Usar el valor migrado si no existe la propiedad
         }
         
         setFormData({
@@ -288,6 +295,7 @@ export const ActivityFormPage: React.FC = () => {
           fieldType: fieldType,
           required: activity.required,
           allowMultiple: activity.allowMultiple || false,
+          selectMultiple: selectMultiple,
           allowCustomOptions: activity.allowCustomOptions || false,
           repeatCount: activity.repeatCount || 3,
           datetimeIncludeDate: datetimeIncludeDate,
@@ -331,6 +339,28 @@ export const ActivityFormPage: React.FC = () => {
         } else {
           setConditionalConfig({ dependsOn: '', showWhen: '' });
           setIsConditionalEnabled(false);
+        }
+        
+        // Cargar configuración de campos compuestos si existe
+        if (activity.compoundConfig && activity.compoundConfig.fields) {
+          // Asegurar que todos los campos tengan nombre interno generado automáticamente
+          const fieldsWithNames = activity.compoundConfig.fields.map((field, index) => {
+            if (!field.name && field.label) {
+              // Generar nombre interno a partir de la etiqueta
+              const normalizedName = field.label
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '') // Eliminar acentos
+                .replace(/[^a-z0-9]/g, '_') // Reemplazar caracteres especiales con guión bajo
+                .replace(/_+/g, '_') // Reemplazar múltiples guiones bajos con uno solo
+                .replace(/^_|_$/g, ''); // Eliminar guiones bajos al inicio y final
+              return { ...field, name: normalizedName || `field_${index}` };
+            }
+            return field;
+          });
+          setCompoundFields(fieldsWithNames);
+        } else {
+          setCompoundFields([]);
         }
       } else {
         setError('Actividad no encontrada');
@@ -381,6 +411,33 @@ export const ActivityFormPage: React.FC = () => {
       activityData.decimalPlaces = formData.decimalPlaces;
     }
     
+    // Agregar configuración de campos compuestos
+    if (formData.fieldType === 'number_compound' && compoundFields.length > 0) {
+      // Asegurar que todos los campos tengan nombre interno válido
+      const fieldsWithNames = compoundFields.map((field, index) => {
+        let name = field.name;
+        if (!name || name.trim() === '') {
+          // Generar nombre interno a partir de la etiqueta o usar índice
+          if (field.label && field.label.trim() !== '') {
+            name = field.label
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '') // Eliminar acentos
+              .replace(/[^a-z0-9]/g, '_') // Reemplazar caracteres especiales con guión bajo
+              .replace(/_+/g, '_') // Reemplazar múltiples guiones bajos con uno solo
+              .replace(/^_|_$/g, ''); // Eliminar guiones bajos al inicio y final
+          }
+          if (!name || name.trim() === '') {
+            name = `field_${index}`;
+          }
+        }
+        return { ...field, name };
+      });
+      activityData.compoundConfig = {
+        fields: fieldsWithNames,
+      };
+    }
+    
     if (formData.helpText) {
       activityData.helpText = formData.helpText;
     }
@@ -412,13 +469,16 @@ export const ActivityFormPage: React.FC = () => {
       }
     }
     
-    // Agregar allowCustomOptions solo para select_multiple
-    if (formData.fieldType === 'select_multiple') {
-      activityData.allowCustomOptions = formData.allowCustomOptions || false;
+    // Agregar selectMultiple y allowCustomOptions para select_single
+    if (formData.fieldType === 'select_single') {
+      activityData.selectMultiple = formData.selectMultiple || false;
+      if (formData.selectMultiple) {
+        activityData.allowCustomOptions = formData.allowCustomOptions || false;
+      }
     }
 
     // Parsear opciones si es campo de selección
-    if ((formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple')) {
+    if (formData.fieldType === 'select_single') {
       // Usar el array de opciones si está disponible, sino parsear del texto
       if (options.length > 0) {
         // Asegurar que value = label para facilitar la escritura de la historia clínica
@@ -530,8 +590,8 @@ export const ActivityFormPage: React.FC = () => {
     setValidationRules(validationRules.filter((_, i) => i !== index));
   };
 
-  const needsUnit = formData.fieldType === 'number_simple' || formData.fieldType === 'calculated';
-  const needsOptions = ['select_single', 'select_multiple'].includes(formData.fieldType);
+  const needsUnit = formData.fieldType === 'number_simple' || formData.fieldType === 'number_compound' || formData.fieldType === 'calculated';
+  const needsOptions = formData.fieldType === 'select_single';
 
   if (loadingData) {
     return (
@@ -749,8 +809,129 @@ export const ActivityFormPage: React.FC = () => {
             />
           )}
 
+          {formData.fieldType === 'number_compound' && (
+            <Box>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="subtitle2">
+                  Campos del Número Compuesto
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    const newField = {
+                      name: `field_${compoundFields.length}`,
+                      label: '',
+                      unit: '',
+                    };
+                    setCompoundFields([...compoundFields, newField]);
+                  }}
+                >
+                  Agregar Campo
+                </Button>
+              </Box>
+              
+              {compoundFields.length === 0 ? (
+                <Alert severity="info">
+                  No hay campos configurados. Haz clic en "Agregar Campo" para comenzar.
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    Ejemplo: Para presión arterial, agrega dos campos: "Sistólica" y "Diastólica"
+                  </Typography>
+                </Alert>
+              ) : (
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Etiqueta (lo que verá el médico)</TableCell>
+                        <TableCell>Unidad (opcional)</TableCell>
+                        <TableCell align="center">Acciones</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {compoundFields.map((field, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <TextField
+                              size="small"
+                              value={field.label}
+                              onChange={(e) => {
+                                const updated = [...compoundFields];
+                                updated[index].label = e.target.value;
+                                // Generar nombre interno automáticamente a partir de la etiqueta
+                                const normalizedName = e.target.value
+                                  .toLowerCase()
+                                  .normalize('NFD')
+                                  .replace(/[\u0300-\u036f]/g, '') // Eliminar acentos
+                                  .replace(/[^a-z0-9]/g, '_') // Reemplazar caracteres especiales con guión bajo
+                                  .replace(/_+/g, '_') // Reemplazar múltiples guiones bajos con uno solo
+                                  .replace(/^_|_$/g, ''); // Eliminar guiones bajos al inicio y final
+                                updated[index].name = normalizedName || `field_${index}`;
+                                setCompoundFields(updated);
+                              }}
+                              placeholder="Ej: Sistólica"
+                              fullWidth
+                              helperText="Etiqueta visible para el médico"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              size="small"
+                              value={field.unit || ''}
+                              onChange={(e) => {
+                                const updated = [...compoundFields];
+                                updated[index].unit = e.target.value;
+                                setCompoundFields(updated);
+                              }}
+                              placeholder="Ej: mmHg"
+                              fullWidth
+                              helperText="Opcional"
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                const updated = compoundFields.filter((_, i) => i !== index);
+                                setCompoundFields(updated);
+                              }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+              
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2" gutterBottom>
+                  <strong>Etiqueta:</strong> Texto que verá el médico al completar el formulario. Ej: "Sistólica", "Diastólica"
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Unidad:</strong> Unidad de medida opcional que se mostrará junto al campo. Ej: "mmHg", "kg", "cm"
+                </Typography>
+              </Alert>
+            </Box>
+          )}
+
           {needsOptions && (
             <Box>
+              {/* Checkbox para selección múltiple */}
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.selectMultiple || false}
+                    onChange={(e) => setFormData({ ...formData, selectMultiple: e.target.checked })}
+                  />
+                }
+                label="Permitir selección múltiple (el médico podrá elegir varias opciones)"
+                sx={{ mb: 2 }}
+              />
+              
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                 <Typography variant="subtitle2">
                   Opciones Disponibles
@@ -862,8 +1043,8 @@ export const ActivityFormPage: React.FC = () => {
                 </Typography>
               </Alert>
               
-              {/* Checkbox para permitir opciones personalizadas (solo para select_multiple) */}
-              {formData.fieldType === 'select_multiple' && (
+              {/* Checkbox para permitir opciones personalizadas (solo si es selección múltiple) */}
+              {formData.fieldType === 'select_single' && formData.selectMultiple && (
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -1174,8 +1355,8 @@ export const ActivityFormPage: React.FC = () => {
                         );
                       }
 
-                      // Si es select_single o select_multiple, mostrar opciones
-                      if (dependsOnActivity.fieldType === 'select_single' || dependsOnActivity.fieldType === 'select_multiple') {
+                      // Si es select_single, mostrar opciones
+                      if (dependsOnActivity.fieldType === 'select_single') {
                         if (dependsOnActivity.options && dependsOnActivity.options.length > 0) {
                           return (
                             <FormControl fullWidth>
@@ -1400,6 +1581,40 @@ export const ActivityFormPage: React.FC = () => {
               </Box>
             )}
             
+            {formData.fieldType === 'number_compound' && (
+              <Box>
+                {compoundFields.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                    No hay campos configurados. Agrega campos en la configuración arriba.
+                  </Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    {compoundFields.map((field, index) => (
+                      <TextField
+                        key={index}
+                        type="number"
+                        label={field.label || `Campo ${index + 1}`}
+                        placeholder={(123.4).toFixed(formData.decimalPlaces)}
+                        disabled
+                        size="small"
+                        sx={{ minWidth: 200 }}
+                        InputProps={{
+                          endAdornment: field.unit ? (
+                            <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                              {field.unit}
+                            </Typography>
+                          ) : null,
+                        }}
+                      />
+                    ))}
+                  </Box>
+                )}
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Decimales: {formData.decimalPlaces}
+                </Typography>
+              </Box>
+            )}
+            
             {formData.fieldType === 'calculated' && (
               <Box>
                 <TextField
@@ -1435,7 +1650,7 @@ export const ActivityFormPage: React.FC = () => {
               </Box>
             )}
             
-            {(formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple') && (
+            {formData.fieldType === 'select_single' && (
               <Box>
                 {options.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" fontStyle="italic">
@@ -1447,7 +1662,7 @@ export const ActivityFormPage: React.FC = () => {
                       <Box key={idx} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                         <FormControlLabel
                           control={
-                            formData.fieldType === 'select_multiple' ? 
+                            formData.selectMultiple ? 
                               <Checkbox disabled size="small" /> : 
                               <Radio disabled size="small" />
                           }

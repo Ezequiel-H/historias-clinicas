@@ -27,8 +27,7 @@ export type FieldType =
   | 'text_long'            // Texto largo (textarea)
   | 'number_simple'        // Número simple
   | 'number_compound'      // Número compuesto (ej: sistólica/diastólica)
-  | 'select_single'        // Selección única (radio/select)
-  | 'select_multiple'      // Selección múltiple (checkbox)
+  | 'select_single'        // Selección (radio/checkbox según selectMultiple)
   | 'boolean'              // Sí/No
   | 'datetime'             // Fecha y/o hora (configurable)
   | 'file'                 // Archivo adjunto
@@ -72,8 +71,9 @@ export interface Activity {
   expectedMin?: number;
   expectedMax?: number;
   decimalPlaces?: number;             // Cantidad de decimales para campos numéricos
-  options?: SelectOption[];           // Para select_single y select_multiple
-  allowCustomOptions?: boolean;      // Para select_multiple: permite agregar opciones personalizadas
+  options?: SelectOption[];           // Para select_single
+  selectMultiple?: boolean;           // Para select_single: si true, permite selección múltiple (checkbox), si false, selección única (radio)
+  allowCustomOptions?: boolean;      // Para select_single con selectMultiple: permite agregar opciones personalizadas
   compoundConfig?: CompoundFieldConfig; // Para number_compound
   conditionalConfig?: ConditionalConfig; // Para conditional
   allowMultiple?: boolean;            // Para campos repetibles (múltiples mediciones)

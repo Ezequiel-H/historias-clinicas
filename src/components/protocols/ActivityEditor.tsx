@@ -53,8 +53,7 @@ const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = 
   { value: 'text_long', label: 'Texto Largo', description: 'Área de texto multilínea' },
   { value: 'number_simple', label: 'Número Simple', description: 'Campo numérico' },
   { value: 'number_compound', label: 'Número Compuesto', description: 'Ej: Sistólica/Diastólica' },
-  { value: 'select_single', label: 'Selección Única', description: 'Lista de opciones (una sola)' },
-  { value: 'select_multiple', label: 'Selección Múltiple', description: 'Lista de opciones (varias)' },
+  { value: 'select_single', label: 'Selección', description: 'Lista de opciones (configurable: única o múltiple)' },
   { value: 'boolean', label: 'Sí/No', description: 'Campo booleano' },
   { value: 'datetime', label: 'Fecha y/o Hora', description: 'Selector de fecha, hora o ambos (configurable)' },
   { value: 'file', label: 'Archivo Adjunto', description: 'Subir archivo (PDF, imagen, etc.)' },
@@ -133,7 +132,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
     };
 
     // Parsear opciones si es campo de selección
-    if ((formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple') && optionsText) {
+    if (formData.fieldType === 'select_single' && optionsText) {
       activityData.options = parseOptions(optionsText);
     }
 
@@ -163,7 +162,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
 
   const sortedActivities = [...activities].sort((a, b) => a.order - b.order);
 
-  const needsOptions = formData.fieldType === 'select_single' || formData.fieldType === 'select_multiple';
+  const needsOptions = formData.fieldType === 'select_single';
   const needsUnit = formData.fieldType === 'number_simple';
 
   return (
