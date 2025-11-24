@@ -60,6 +60,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [showValuesDialog, setShowValuesDialog] = useState(false);
+  const [validatedFormData, setValidatedFormData] = useState<any>(null);
 
   // Función helper para normalizar tiempo a formato HH:MM
   const normalizeTime = (timeValue: string): string => {
@@ -93,6 +95,21 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     return !isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59;
   };
 
+  // Función para calcular la hora siguiente sumando minutos
+  const addMinutesToTime = (time: string, minutesToAdd: number): string => {
+    if (!time || time.length !== 5) return '';
+    const [hours, minutes] = time.split(':');
+    const h = parseInt(hours, 10);
+    const m = parseInt(minutes, 10);
+    if (isNaN(h) || isNaN(m)) return '';
+    
+    const totalMinutes = h * 60 + m + minutesToAdd;
+    const newHours = Math.floor(totalMinutes / 60) % 24;
+    const newMinutes = totalMinutes % 60;
+    
+    return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
+  };
+
   // Función helper para verificar si debe mostrarse error en fecha/hora
   const shouldShowDateTimeError = (activity: Activity, index?: number): { date: boolean, time: boolean } => {
     if (!showValidation) return { date: false, time: false };
@@ -105,15 +122,45 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       const measurementValue = Array.isArray(value) ? value[index] : undefined;
       hasValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
     } else {
-      // Para campos simples
+      // Para campos simples o fecha/hora global
+      if (activity.allowMultiple) {
+        // Si es repetible y fecha/hora global, verificar si hay al menos una medición con valor
+        hasValue = Array.isArray(value) && value.some(v => v !== '' && v !== null && v !== undefined);
+      } else {
       hasValue = value !== undefined && value !== null && value !== '' && 
                  !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+      }
     }
     
     if (!hasValue) return { date: false, time: false };
     
-    const dateKey = index !== undefined ? `${activity.id}_date_${index}` : `${activity.id}_date`;
-    const timeKey = index !== undefined ? `${activity.id}_time_${index}` : `${activity.id}_time`;
+    // Determinar las claves según el modo (global o por medición)
+    let dateKey: string;
+    let timeKey: string;
+    
+    if (activity.allowMultiple) {
+      if (index !== undefined) {
+        // Modo por medición
+        if (activity.requireDatePerMeasurement !== false) {
+          dateKey = `${activity.id}_date_${index}`;
+        } else {
+          dateKey = `${activity.id}_date`; // Global
+        }
+        if (activity.requireTimePerMeasurement !== false) {
+          timeKey = `${activity.id}_time_${index}`;
+        } else {
+          timeKey = `${activity.id}_time`; // Global
+        }
+      } else {
+        // Modo global (sin índice)
+        dateKey = `${activity.id}_date`;
+        timeKey = `${activity.id}_time`;
+      }
+    } else {
+      // Campos simples
+      dateKey = `${activity.id}_date`;
+      timeKey = `${activity.id}_time`;
+    }
     
     return {
       date: activity.requireDate ? (!formValues[dateKey] || formValues[dateKey] === '') : false,
@@ -128,6 +175,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       setValidationErrors([]);
       setShowValidation(false);
       setShowSuccessToast(false);
+      setShowValuesDialog(false);
+      setValidatedFormData(null);
     }
   }, [open]);
 
@@ -142,6 +191,24 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       newFormValues = { ...formValues, [activityId]: newValues };
     } else {
       newFormValues = { ...formValues, [activityId]: value };
+    }
+    
+    // Si es un cambio de hora de la primera medición y hay intervalo configurado, calcular las demás
+    if (activityId.includes('_time_0')) {
+      const baseActivityId = activityId.replace('_time_0', '');
+      const activity = activities.find(a => a.id === baseActivityId);
+      if (activity && activity.allowMultiple && activity.requireTime && 
+          activity.requireTimePerMeasurement !== false && activity.timeIntervalMinutes &&
+          activity.repeatCount) {
+        const firstTime = normalizeTime(value);
+        if (firstTime && isValidTime(firstTime)) {
+          // Calcular las horas de las demás mediciones
+          for (let i = 1; i < activity.repeatCount; i++) {
+            const calculatedTime = addMinutesToTime(firstTime, activity.timeIntervalMinutes * i);
+            newFormValues[`${baseActivityId}_time_${i}`] = calculatedTime;
+          }
+        }
+      }
     }
     
     setFormValues(newFormValues);
@@ -262,28 +329,38 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
    * Valida que la fecha esté presente cuando hay valor en el campo principal
    */
   const validateRequiredDate: ValidationFunction = (activity, value, formValues, index) => {
-    const hasValue = value !== undefined && value !== null && value !== '' && 
-                    !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
-    
-    if (!hasValue) {
-      return { isValid: true }; // No validar si no hay valor principal
-    }
-
+    let hasValue = false;
     let dateKey: string;
-    let measurementValue: any;
     
-    if (activity.allowMultiple && index !== undefined) {
-      measurementValue = Array.isArray(value) ? value[index] : undefined;
-      const hasMeasurementValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
-      if (!hasMeasurementValue) {
-        return { isValid: true }; // No validar si esta medición específica no tiene valor
+    if (activity.allowMultiple) {
+      if (index !== undefined) {
+        // Validación por medición individual
+        const measurementValue = Array.isArray(value) ? value[index] : undefined;
+        hasValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
+        if (!hasValue) {
+          return { isValid: true }; // No validar si esta medición no tiene valor
+        }
+        // Determinar si es por medición o global
+        if (activity.requireDatePerMeasurement !== false) {
+          dateKey = `${activity.id}_date_${index}`;
+        } else {
+          dateKey = `${activity.id}_date`; // Global
+        }
+      } else {
+        // Validación global: verificar si hay al menos una medición con valor
+        hasValue = Array.isArray(value) && value.some(v => v !== '' && v !== null && v !== undefined);
+        if (!hasValue) {
+          return { isValid: true };
+        }
+        dateKey = `${activity.id}_date`; // Siempre global cuando no hay índice
       }
-      dateKey = `${activity.id}_date_${index}`;
-    } else if (activity.allowMultiple) {
-      // Para campos repetibles sin índice específico, validar todas las mediciones
-      // Esta validación se hará por cada índice en el bucle principal
-      return { isValid: true };
     } else {
+      // Campo simple
+      hasValue = value !== undefined && value !== null && value !== '' && 
+                 !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+      if (!hasValue) {
+        return { isValid: true };
+      }
       dateKey = `${activity.id}_date`;
     }
 
@@ -292,7 +369,11 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       return { isValid: true };
     }
 
-    const measurementText = index !== undefined ? ` en la medición ${index + 1}` : '';
+    const measurementText = activity.allowMultiple && index !== undefined && activity.requireDatePerMeasurement !== false
+      ? ` en la medición ${index + 1}`
+      : activity.allowMultiple && activity.requireDatePerMeasurement === false
+      ? ' (fecha común para todas las mediciones)'
+      : '';
     return {
       isValid: false,
       error: {
@@ -315,27 +396,38 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
    * Valida que la hora esté presente cuando hay valor en el campo principal
    */
   const validateRequiredTime: ValidationFunction = (activity, value, formValues, index) => {
-    const hasValue = value !== undefined && value !== null && value !== '' && 
-                    !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
-    
-    if (!hasValue) {
-      return { isValid: true }; // No validar si no hay valor principal
-    }
-
+    let hasValue = false;
     let timeKey: string;
-    let measurementValue: any;
     
-    if (activity.allowMultiple && index !== undefined) {
-      measurementValue = Array.isArray(value) ? value[index] : undefined;
-      const hasMeasurementValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
-      if (!hasMeasurementValue) {
-        return { isValid: true }; // No validar si esta medición específica no tiene valor
+    if (activity.allowMultiple) {
+      if (index !== undefined) {
+        // Validación por medición individual
+        const measurementValue = Array.isArray(value) ? value[index] : undefined;
+        hasValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
+        if (!hasValue) {
+          return { isValid: true }; // No validar si esta medición no tiene valor
+        }
+        // Determinar si es por medición o global
+        if (activity.requireTimePerMeasurement !== false) {
+          timeKey = `${activity.id}_time_${index}`;
+        } else {
+          timeKey = `${activity.id}_time`; // Global
+        }
+      } else {
+        // Validación global: verificar si hay al menos una medición con valor
+        hasValue = Array.isArray(value) && value.some(v => v !== '' && v !== null && v !== undefined);
+        if (!hasValue) {
+          return { isValid: true };
+        }
+        timeKey = `${activity.id}_time`; // Siempre global cuando no hay índice
       }
-      timeKey = `${activity.id}_time_${index}`;
-    } else if (activity.allowMultiple) {
-      // Para campos repetibles sin índice específico, validar todas las mediciones
-      return { isValid: true };
     } else {
+      // Campo simple
+      hasValue = value !== undefined && value !== null && value !== '' && 
+                 !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+      if (!hasValue) {
+        return { isValid: true };
+      }
       timeKey = `${activity.id}_time`;
     }
 
@@ -344,7 +436,11 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       return { isValid: true };
     }
 
-    const measurementText = index !== undefined ? ` en la medición ${index + 1}` : '';
+    const measurementText = activity.allowMultiple && index !== undefined && activity.requireTimePerMeasurement !== false
+      ? ` en la medición ${index + 1}`
+      : activity.allowMultiple && activity.requireTimePerMeasurement === false
+      ? ' (hora común para todas las mediciones)'
+      : '';
     return {
       isValid: false,
       error: {
@@ -414,17 +510,17 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         return {
           isValid: false,
           error: {
-            activityId: activity.id,
-            activityName: activity.name,
-            rule: {
+          activityId: activity.id,
+          activityName: activity.name,
+          rule: {
               id: `exclusive_${exclusiveOpt.value}`,
               name: 'Opción excluyente seleccionada',
               condition: 'equals',
               value: exclusiveOpt.value,
-              severity: 'error',
+            severity: 'error',
               message: `La opción "${exclusiveOpt.label}" es excluyente. Si el paciente tiene esta condición, NO califica para este protocolo.`,
-              isActive: true,
-            },
+            isActive: true,
+          },
           },
         };
       }
@@ -436,7 +532,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   /**
    * Valida las reglas personalizadas (validationRules)
    */
-  const validateCustomRules: ValidationFunction = (activity, value, formValues) => {
+  const validateCustomRules: ValidationFunction = (activity, value, formValues, index) => {
     if (!activity.validationRules || activity.validationRules.length === 0) {
       return { isValid: true };
     }
@@ -444,7 +540,14 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     // Obtener el valor numérico a validar
     let numericValue: number | null = null;
     
-    if (activity.allowMultiple && Array.isArray(value)) {
+    // Si hay un índice específico (campos repetibles), validar solo esa medición
+    if (activity.allowMultiple && index !== undefined && Array.isArray(value)) {
+      const measurementValue = value[index];
+      if (measurementValue !== '' && measurementValue !== null && !isNaN(Number(measurementValue))) {
+        numericValue = Number(measurementValue);
+      }
+    } else if (activity.allowMultiple && Array.isArray(value)) {
+      // Si es repetible pero no hay índice, calcular promedio (para compatibilidad)
       const numericValues = value.filter(v => v !== '' && v !== null && !isNaN(Number(v))).map(Number);
       if (numericValues.length > 0) {
         numericValue = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
@@ -527,12 +630,21 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       }
 
       if (violated) {
+        // Crear un mensaje personalizado que incluya el número de medición si es repetible
+        const measurementText = activity.allowMultiple && index !== undefined 
+          ? ` (Medición ${index + 1})` 
+          : '';
+        const customRule = {
+          ...rule,
+          message: rule.message + measurementText,
+        };
+        
         return {
           isValid: false,
           error: {
           activityId: activity.id,
           activityName: activity.name,
-          rule,
+            rule: customRule,
           currentValue: numericValue,
           },
         };
@@ -576,6 +688,13 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           for (let i = 0; i < activity.repeatCount; i++) {
           const errors = runValidations(activity, value, values, i);
           allErrors.push(...errors);
+        }
+        
+        // Si fecha/hora es global, validar también sin índice (una vez para todas)
+        if ((activity.requireDate && activity.requireDatePerMeasurement === false) ||
+            (activity.requireTime && activity.requireTimePerMeasurement === false)) {
+          const globalErrors = runValidations(activity, value, values);
+          allErrors.push(...globalErrors);
           }
         } else {
         // Para campos simples
@@ -656,13 +775,20 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     const allErrors: ValidationError[] = [];
     
     for (const activity of activities) {
-      const value = formValues[activity.id];
+        const value = formValues[activity.id];
       
       if (activity.allowMultiple && activity.repeatCount) {
         // Para campos repetibles, validar cada medición individualmente
         for (let i = 0; i < activity.repeatCount; i++) {
           const errors = runValidations(activity, value, formValues, i);
           allErrors.push(...errors);
+        }
+        
+        // Si fecha/hora es global, validar también sin índice (una vez para todas)
+        if ((activity.requireDate && activity.requireDatePerMeasurement === false) ||
+            (activity.requireTime && activity.requireTimePerMeasurement === false)) {
+          const globalErrors = runValidations(activity, value, formValues);
+          allErrors.push(...globalErrors);
               }
             } else {
               // Para campos simples
@@ -676,7 +802,152 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     // Verificar si hay errores bloqueantes
     const blockingErrors = allErrors.filter(e => e.rule.severity === 'error');
     if (blockingErrors.length === 0) {
+      // Función helper para formatear valores numéricos
+      const formatNumericValue = (value: any, activity: Activity): any => {
+        if (value === null || value === undefined || value === '') {
+          return value;
+        }
+
+        // Solo formatear si la actividad tiene decimalPlaces configurado
+        if (activity.decimalPlaces === undefined) {
+          return value;
+        }
+
+        const numericTypes = ['number_simple', 'number_compound'];
+        if (!numericTypes.includes(activity.fieldType)) {
+          return value;
+        }
+
+        const decimalPlaces = activity.decimalPlaces;
+
+        // Si es un array (campos repetibles), formatear cada valor
+        if (Array.isArray(value)) {
+          return value.map(v => {
+            const num = parseFloat(v);
+            if (isNaN(num)) return v;
+            return num.toFixed(decimalPlaces);
+          });
+        }
+
+        // Si es un objeto (campo compuesto), formatear cada campo numérico
+        if (typeof value === 'object' && value !== null) {
+          const formatted: any = {};
+          for (const key in value) {
+            const num = parseFloat(value[key]);
+            if (!isNaN(num)) {
+              formatted[key] = num.toFixed(decimalPlaces);
+            } else {
+              formatted[key] = value[key];
+            }
+          }
+          return formatted;
+        }
+
+        // Valor numérico simple
+        const num = parseFloat(value);
+        if (isNaN(num)) return value;
+        return num.toFixed(decimalPlaces);
+      };
+
+      // Construir objeto con los valores del formulario
+      const formData: any = {
+        visitName,
+        activities: activities.map(activity => {
+          const rawValue = formValues[activity.id];
+          const formattedValue = formatNumericValue(rawValue, activity);
+          
+          const activityObj: any = {
+            id: activity.id,
+            name: activity.name,
+            fieldType: activity.fieldType,
+            helpText: activity.helpText,
+            description: activity.description,
+          };
+
+          // Incluir campos si existen en la actividad
+          if (activity.measurementUnit) {
+            activityObj.measurementUnit = activity.measurementUnit;
+          }
+
+          // Incluir fecha y hora si están configuradas
+          if (activity.requireDate || activity.requireTime) {
+            if (activity.allowMultiple) {
+              // Para campos repetibles con fecha/hora, usar measurements
+              const measurements: any[] = [];
+              const repeatCount = activity.repeatCount || 3;
+              
+              // Determinar si fecha/hora es global o por medición
+              const dateIsGlobal = activity.requireDate && activity.requireDatePerMeasurement === false;
+              const timeIsGlobal = activity.requireTime && activity.requireTimePerMeasurement === false;
+              
+              for (let i = 0; i < repeatCount; i++) {
+                const measurementValue = Array.isArray(formattedValue) ? formattedValue[i] : undefined;
+                const measurementDate = dateIsGlobal 
+                  ? formValues[`${activity.id}_date`]
+                  : formValues[`${activity.id}_date_${i}`];
+                
+                // Para tiempo: si hay intervalo configurado y no es la primera medición, calcular automáticamente
+                let measurementTime: string | undefined;
+                if (timeIsGlobal) {
+                  measurementTime = formValues[`${activity.id}_time`];
+                } else {
+                  const hasTimeInterval = activity.timeIntervalMinutes && activity.timeIntervalMinutes > 0;
+                  if (hasTimeInterval && i > 0) {
+                    // Calcular hora basada en la primera medición
+                    const firstTime = normalizeTime(formValues[`${activity.id}_time_0`] || '');
+                    if (firstTime && isValidTime(firstTime)) {
+                      measurementTime = addMinutesToTime(firstTime, activity.timeIntervalMinutes * i);
+                    }
+                  } else {
+                    measurementTime = formValues[`${activity.id}_time_${i}`];
+                  }
+                }
+                
+                if (measurementValue !== undefined || measurementDate || measurementTime) {
+                  const measurement: any = {};
+                  if (measurementValue !== undefined) {
+                    measurement.value = measurementValue;
+                  }
+                  if (activity.requireDate && measurementDate) {
+                    measurement.date = measurementDate;
+                  }
+                  if (activity.requireTime && measurementTime) {
+                    measurement.time = normalizeTime(measurementTime);
+                  }
+                  measurements.push(measurement);
+                }
+              }
+              if (measurements.length > 0) {
+                activityObj.measurements = measurements;
+              }
+            } else {
+              // Para campos simples
+              activityObj.value = formattedValue;
+              const activityDate = formValues[`${activity.id}_date`];
+              const activityTime = formValues[`${activity.id}_time`];
+              if (activity.requireDate && activityDate) {
+                activityObj.date = activityDate;
+              }
+              if (activity.requireTime && activityTime) {
+                activityObj.time = normalizeTime(activityTime);
+              }
+            }
+          } else {
+            // Si no hay fecha/hora, incluir value normalmente
+            activityObj.value = formattedValue;
+          }
+
+          return activityObj;
+        }),
+        validationErrors: allErrors.filter(e => e.rule.severity === 'warning'),
+        timestamp: new Date().toISOString(),
+      };
+      
+      setValidatedFormData(formData);
       setShowSuccessToast(true);
+    } else {
+      // Si hay errores, limpiar el objeto validado
+      setValidatedFormData(null);
     }
   };
 
@@ -921,6 +1192,71 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
 
         {activity.allowMultiple ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Campos de fecha y hora globales (una vez para todas las mediciones) */}
+            {(activity.requireDate || activity.requireTime) && 
+             ((activity.requireDate && activity.requireDatePerMeasurement === false) || 
+              (activity.requireTime && activity.requireTimePerMeasurement === false)) && (
+              <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Fecha/Hora para todas las mediciones:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  {activity.requireDate && activity.requireDatePerMeasurement === false && (() => {
+                    const dateError = shouldShowDateTimeError(activity).date;
+                    return (
+                      <TextField
+                        type="date"
+                        label="Fecha de realización (común a todas las mediciones)"
+                        value={formValues[`${activity.id}_date`] || ''}
+                        onChange={(e) => handleChange(`${activity.id}_date`, e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        size="small"
+                        sx={{ minWidth: 200 }}
+                        error={dateError}
+                        helperText={dateError ? 'La fecha es obligatoria cuando se ingresa un valor' : ''}
+                      />
+                    );
+                  })()}
+                  {activity.requireTime && activity.requireTimePerMeasurement === false && (() => {
+                    const timeError = shouldShowDateTimeError(activity).time;
+                    return (
+                      <TextField
+                        type="text"
+                        label="Hora de realización (común a todas las mediciones)"
+                        placeholder="HH:MM"
+                        value={normalizeTime(formValues[`${activity.id}_time`] || '')}
+                        onChange={(e) => {
+                          const formatted = formatTimeInput(e.target.value);
+                          handleChange(`${activity.id}_time`, formatted);
+                        }}
+                        onBlur={(e) => {
+                          const timeValue = normalizeTime(e.target.value);
+                          if (timeValue && !isValidTime(timeValue)) {
+                            handleChange(`${activity.id}_time`, '');
+                          } else {
+                            handleChange(`${activity.id}_time`, timeValue);
+                          }
+                        }}
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{ 
+                          maxLength: 5,
+                          pattern: '[0-9]{2}:[0-9]{2}'
+                        }}
+                        size="small"
+                        sx={{ minWidth: 200 }}
+                        error={timeError}
+                        helperText={
+                          timeError 
+                            ? 'La hora es obligatoria cuando se ingresa un valor' 
+                            : 'Formato: HH:MM (ej: 14:30)'
+                        }
+                      />
+                    );
+                  })()}
+                </Box>
+              </Box>
+            )}
+            
             {Array.from({ length: activity.repeatCount || 3 }).map((_, index) => (
               <Box key={index}>
                 <Typography variant="subtitle2" gutterBottom>
@@ -928,10 +1264,11 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                 </Typography>
                 {renderSingleField(index)}
                 
-                {/* Campos de fecha y hora para mediciones repetibles */}
-                {(activity.requireDate || activity.requireTime) && (
+                {/* Campos de fecha y hora por medición (solo si está configurado así) */}
+                {((activity.requireDate && activity.requireDatePerMeasurement !== false) || 
+                  (activity.requireTime && activity.requireTimePerMeasurement !== false)) && (
                   <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    {activity.requireDate && (() => {
+                    {activity.requireDate && activity.requireDatePerMeasurement !== false && (() => {
                       const dateError = shouldShowDateTimeError(activity, index).date;
                       return (
                         <TextField
@@ -947,8 +1284,35 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                         />
                       );
                     })()}
-                    {activity.requireTime && (() => {
+                    {activity.requireTime && activity.requireTimePerMeasurement !== false && (() => {
                       const timeError = shouldShowDateTimeError(activity, index).time;
+                      const hasTimeInterval = activity.timeIntervalMinutes && activity.timeIntervalMinutes > 0;
+                      const isFirstMeasurement = index === 0;
+                      const shouldShowInput = !hasTimeInterval || isFirstMeasurement;
+                      
+                      // Si hay intervalo y no es la primera, mostrar solo lectura con la hora calculada
+                      if (hasTimeInterval && !isFirstMeasurement) {
+                        const firstTime = normalizeTime(formValues[`${activity.id}_time_0`] || '');
+                        const calculatedTime = firstTime && isValidTime(firstTime)
+                          ? addMinutesToTime(firstTime, activity.timeIntervalMinutes! * index)
+                          : '';
+                        return (
+                          <TextField
+                            type="text"
+                            label="Hora de realización"
+                            value={calculatedTime}
+                            InputLabelProps={{ shrink: true }}
+                            size="small"
+                            sx={{ minWidth: 200 }}
+                            InputProps={{
+                              readOnly: true,
+                            }}
+                            helperText={`Calculada automáticamente (+${activity.timeIntervalMinutes! * index} min desde la primera)`}
+                          />
+                        );
+                      }
+                      
+                      // Campo editable para la primera medición (o todas si no hay intervalo)
                       return (
                         <TextField
                           type="text"
@@ -962,7 +1326,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                           onBlur={(e) => {
                             const timeValue = normalizeTime(e.target.value);
                             if (timeValue && !isValidTime(timeValue)) {
-                              // Si el formato no es válido, limpiar el campo
                               handleChange(`${activity.id}_time_${index}`, '');
                             } else {
                               handleChange(`${activity.id}_time_${index}`, timeValue);
@@ -977,9 +1340,11 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                           sx={{ minWidth: 200 }}
                           error={timeError}
                           helperText={
-                            timeError 
-                              ? 'La hora es obligatoria cuando se ingresa un valor' 
-                              : 'Formato: HH:MM (ej: 14:30)'
+                            hasTimeInterval && isFirstMeasurement
+                              ? 'Las demás horas se calcularán automáticamente'
+                              : timeError 
+                                ? 'La hora es obligatoria cuando se ingresa un valor' 
+                                : 'Formato: HH:MM (ej: 14:30)'
                           }
                         />
                       );
@@ -1159,6 +1524,15 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             Cerrar
           </Button>
           {activities.length > 0 && (
+            <>
+              <Button
+                onClick={() => setShowValuesDialog(true)}
+                variant="outlined"
+                startIcon={<CheckCircleIcon />}
+                disabled={!validatedFormData}
+              >
+                Ver Objeto
+              </Button>
               <Button
                 onClick={handleSubmit}
                 variant="contained"
@@ -1166,6 +1540,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
               >
                 Validar Formulario
               </Button>
+            </>
           )}
         </Box>
       </DialogActions>
@@ -1182,10 +1557,70 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           severity="success"
           sx={{ width: '100%', minWidth: 300 }}
           icon={<CheckCircleIcon />}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => {
+                setShowSuccessToast(false);
+                setShowValuesDialog(true);
+              }}
+              sx={{ 
+                fontWeight: 600,
+                textTransform: 'none',
+                '&:hover': {
+                  bgcolor: 'rgba(255, 255, 255, 0.1)'
+                }
+              }}
+            >
+              Ver Objeto
+            </Button>
+          }
         >
           Formulario válido! Todos los campos requeridos están completos y no hay errores de validación.
         </Alert>
       </Snackbar>
+
+      {/* Dialog para mostrar valores validados */}
+      <Dialog
+        open={showValuesDialog}
+        onClose={() => setShowValuesDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <CheckCircleIcon color="success" />
+            <Typography variant="h6">Valores del Formulario</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Aquí están los valores completados en el formulario:
+          </Typography>
+          <Box
+            sx={{
+              mt: 2,
+              p: 2,
+              bgcolor: 'grey.50',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'grey.300',
+              maxHeight: '60vh',
+              overflow: 'auto',
+            }}
+          >
+            <pre style={{ margin: 0, fontSize: '0.875rem', fontFamily: 'monospace' }}>
+              {validatedFormData ? JSON.stringify(validatedFormData, null, 2) : 'Cargando...'}
+            </pre>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowValuesDialog(false)}>
+            Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 };

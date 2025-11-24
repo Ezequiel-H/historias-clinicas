@@ -154,6 +154,9 @@ export const ActivityFormPage: React.FC = () => {
     repeatCount: 3,
     requireDate: false,
     requireTime: false,
+    requireDatePerMeasurement: true, // Por defecto, fecha por cada medición
+    requireTimePerMeasurement: true, // Por defecto, hora por cada medición
+    timeIntervalMinutes: undefined, // Intervalo fijo entre mediciones (en minutos)
     measurementUnit: '',
     decimalPlaces: 2,
     helpText: '',
@@ -237,6 +240,9 @@ export const ActivityFormPage: React.FC = () => {
           repeatCount: activity.repeatCount || 3,
           requireDate: activity.requireDate || false,
           requireTime: activity.requireTime || false,
+          requireDatePerMeasurement: activity.requireDatePerMeasurement !== undefined ? activity.requireDatePerMeasurement : true,
+          requireTimePerMeasurement: activity.requireTimePerMeasurement !== undefined ? activity.requireTimePerMeasurement : true,
+          timeIntervalMinutes: activity.timeIntervalMinutes,
           measurementUnit: activity.measurementUnit || '',
           decimalPlaces: activity.decimalPlaces ?? 2,
           helpText: activity.helpText || '',
@@ -319,9 +325,18 @@ export const ActivityFormPage: React.FC = () => {
     // Agregar campos de fecha y hora
     if (formData.requireDate) {
       activityData.requireDate = formData.requireDate;
+      if (formData.allowMultiple) {
+        activityData.requireDatePerMeasurement = formData.requireDatePerMeasurement;
+      }
     }
     if (formData.requireTime) {
       activityData.requireTime = formData.requireTime;
+      if (formData.allowMultiple) {
+        activityData.requireTimePerMeasurement = formData.requireTimePerMeasurement;
+        if (formData.timeIntervalMinutes) {
+          activityData.timeIntervalMinutes = formData.timeIntervalMinutes;
+        }
+      }
     }
     
     // Agregar allowCustomOptions solo para select_multiple
@@ -744,15 +759,46 @@ export const ActivityFormPage: React.FC = () => {
                 }
                 label="Campo Requerido (obligatorio completar)"
               />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.allowMultiple}
-                    onChange={(e) => setFormData({ ...formData, allowMultiple: e.target.checked })}
+              <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={formData.allowMultiple}
+                      onChange={(e) => setFormData({ ...formData, allowMultiple: e.target.checked })}
+                    />
+                  }
+                  label="Permitir Múltiples Mediciones (ej: tomar PA 3 veces)"
+                />
+                {formData.allowMultiple && (
+                  <TextField
+                    label="Número de Mediciones"
+                    type="number"
+                    value={formData.repeatCount}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Permitir campo vacío mientras se escribe, pero guardar como número
+                      if (value === '') {
+                        setFormData({ ...formData, repeatCount: '' as any });
+                      } else {
+                        const num = parseInt(value);
+                        if (!isNaN(num) && num >= 1 && num <= 10) {
+                          setFormData({ ...formData, repeatCount: num });
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      // Asegurar que tenga un valor válido al salir del campo
+                      if (typeof formData.repeatCount === 'string' || formData.repeatCount < 1) {
+                        setFormData({ ...formData, repeatCount: 3 });
+                      }
+                    }}
+                    inputProps={{ min: 1, max: 10 }}
+                    size="small"
+                    sx={{ width: 180 }}
+                    helperText=""
                   />
-                }
-                label="Permitir Múltiples Mediciones (ej: tomar PA 3 veces)"
-              />
+                )}
+              </Box>
               <FormControlLabel
                 control={
                   <Checkbox
@@ -773,35 +819,63 @@ export const ActivityFormPage: React.FC = () => {
               />
             </Box>
             
-            {/* Cantidad de repeticiones - solo si allowMultiple está marcado */}
-            {formData.allowMultiple && (
-              <Box sx={{ ml: 4, mt: 1 }}>
-                <TextField
-                  label="Número de Mediciones"
-                  type="number"
-                  value={formData.repeatCount}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    // Permitir campo vacío mientras se escribe, pero guardar como número
-                    if (value === '') {
-                      setFormData({ ...formData, repeatCount: '' as any });
-                    } else {
-                      const num = parseInt(value);
-                      if (!isNaN(num) && num >= 1 && num <= 10) {
-                        setFormData({ ...formData, repeatCount: num });
+            {/* Opciones de fecha/hora por medición - solo si allowMultiple está marcado */}
+            {formData.allowMultiple && (formData.requireDate || formData.requireTime) && (
+              <Box sx={{ ml: 4, mt: 1, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Configuración de Fecha/Hora para Mediciones Repetibles
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                  Elige si quieres una fecha/hora para todas las mediciones o una por cada medición
+                </Typography>
+                {formData.requireDate && (
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={formData.requireDatePerMeasurement}
+                        onChange={(e) => setFormData({ ...formData, requireDatePerMeasurement: e.target.checked })}
+                      />
+                    }
+                    label="Fecha por cada medición (si está desmarcado, una fecha para todas)"
+                  />
+                )}
+                {formData.requireTime && (
+                  <>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={formData.requireTimePerMeasurement}
+                          onChange={(e) => setFormData({ ...formData, requireTimePerMeasurement: e.target.checked })}
+                        />
                       }
-                    }
-                  }}
-                  onBlur={() => {
-                    // Asegurar que tenga un valor válido al salir del campo
-                    if (typeof formData.repeatCount === 'string' || formData.repeatCount < 1) {
-                      setFormData({ ...formData, repeatCount: 3 });
-                    }
-                  }}
-                  inputProps={{ min: 1, max: 10 }}
-                  sx={{ width: 200 }}
-                  helperText="¿Cuántas veces se debe repetir esta medición?"
-                />
+                      label="Hora por cada medición (si está desmarcado, una hora para todas)"
+                    />
+                    {formData.requireTimePerMeasurement && (
+                      <Box sx={{ ml: 4, mt: 1 }}>
+                        <TextField
+                          label="Intervalo entre mediciones (minutos)"
+                          type="number"
+                          value={formData.timeIntervalMinutes || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '') {
+                              setFormData({ ...formData, timeIntervalMinutes: undefined });
+                            } else {
+                              const num = parseInt(value);
+                              if (!isNaN(num) && num > 0) {
+                                setFormData({ ...formData, timeIntervalMinutes: num });
+                              }
+                            }
+                          }}
+                          size="small"
+                          sx={{ width: 250 }}
+                          helperText="Si configuras un intervalo, solo se preguntará la hora de la primera medición. Las demás se calcularán automáticamente."
+                          placeholder="Ej: 15 (cada 15 minutos)"
+                        />
+                      </Box>
+                    )}
+                  </>
+                )}
               </Box>
             )}
           </Box>
