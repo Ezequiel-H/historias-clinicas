@@ -170,6 +170,22 @@ export interface ActivityFormData {
   order: number;
 }
 
+// Tipos para Plantillas (Templates)
+export interface Template {
+  id: string;
+  name: string;
+  description?: string;
+  activities: Activity[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TemplateFormData {
+  name: string;
+  description?: string;
+  activities?: Activity[];
+}
+
 // Tipos para respuestas de API
 export interface ApiResponse<T> {
   data: T;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
@@ -28,15 +28,32 @@ export const VisitFormPage: React.FC = () => {
   const [name, setName] = useState('');
   const [type, setType] = useState<'presencial' | 'telefonica' | 'no_programada'>('presencial');
   const [order, setOrder] = useState(1);
+  const [allVisits, setAllVisits] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (protocolId) {
+      loadProtocolData();
+    }
+  }, [protocolId]);
 
   useEffect(() => {
     if (isEditMode && protocolId && visitId) {
       loadVisitData();
     }
   }, [isEditMode, visitId, protocolId]);
+
+  const loadProtocolData = async () => {
+    try {
+      const response = await protocolService.getProtocolById(protocolId!);
+      const protocol = response.data;
+      setAllVisits(protocol.visits || []);
+    } catch (err) {
+      console.error('Error al cargar protocolo:', err);
+    }
+  };
 
   const loadVisitData = async () => {
     try {
@@ -46,6 +63,7 @@ export const VisitFormPage: React.FC = () => {
       // Cargar el protocolo completo para obtener los datos de la visita
       const response = await protocolService.getProtocolById(protocolId!);
       const protocol = response.data;
+      setAllVisits(protocol.visits || []);
       
       // Buscar la visita específica
       const visit = protocol.visits.find((v) => v.id === visitId);
@@ -53,7 +71,10 @@ export const VisitFormPage: React.FC = () => {
       if (visit) {
         setName(visit.name);
         setType(visit.type);
-        setOrder(visit.order);
+        // Calcular el orden basado en la posición en la lista ordenada
+        const sortedVisits = [...protocol.visits].sort((a, b) => a.order - b.order);
+        const visitIndex = sortedVisits.findIndex((v) => v.id === visitId);
+        setOrder(visitIndex >= 0 ? visitIndex + 1 : visit.order);
       } else {
         setError('Visita no encontrada');
       }
@@ -64,6 +85,20 @@ export const VisitFormPage: React.FC = () => {
       setLoadingData(false);
     }
   };
+
+  // Calcular el orden automáticamente basado en la posición en la lista
+  const currentOrder = useMemo(() => {
+    if (isEditMode && visitId) {
+      // En modo edición, calcular basado en la posición actual
+      const sortedVisits = [...allVisits].sort((a, b) => a.order - b.order);
+      const visitIndex = sortedVisits.findIndex((v) => v.id === visitId);
+      return visitIndex >= 0 ? visitIndex + 1 : allVisits.length + 1;
+    } else {
+      // En modo creación, el orden será el siguiente disponible
+      const sortedVisits = [...allVisits].sort((a, b) => a.order - b.order);
+      return sortedVisits.length + 1;
+    }
+  }, [allVisits, isEditMode, visitId]);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -78,7 +113,7 @@ export const VisitFormPage: React.FC = () => {
       const visitData = {
         name,
         type,
-        order,
+        order: currentOrder, // Usar el orden calculado automáticamente
       };
 
       if (isEditMode && visitId) {
@@ -88,6 +123,9 @@ export const VisitFormPage: React.FC = () => {
         // Crear nueva visita
         await protocolService.addVisit(protocolId!, visitData);
       }
+
+      // Recargar los datos del protocolo para actualizar el orden
+      await loadProtocolData();
 
       // Volver a la página de edición del protocolo
       navigate(`/protocols/${protocolId}/edit`);
@@ -164,9 +202,9 @@ export const VisitFormPage: React.FC = () => {
             type="number"
             fullWidth
             required
-            value={order}
-            onChange={(e) => setOrder(parseInt(e.target.value) || 1)}
-            helperText="Orden en que aparecerá esta visita en el protocolo"
+            value={currentOrder}
+            disabled
+            helperText="El orden se calcula automáticamente según la posición en la lista de visitas"
             inputProps={{ min: 1 }}
           />
 

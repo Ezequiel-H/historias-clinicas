@@ -25,6 +25,7 @@ import {
   Assignment as AssignmentIcon,
   ExitToApp as LogoutIcon,
   AccountCircle as AccountIcon,
+  ContentCopy as TemplateIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -47,6 +48,11 @@ const menuItems: MenuItemType[] = [
     text: 'Protocolos',
     icon: <DescriptionIcon />,
     path: '/protocols',
+  },
+  {
+    text: 'Plantillas',
+    icon: <TemplateIcon />,
+    path: '/templates',
   },
   {
     text: 'Visitas',

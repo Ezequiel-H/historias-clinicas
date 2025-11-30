@@ -52,7 +52,7 @@ import {
   Link as LinkIcon,
 } from '@mui/icons-material';
 import type { FieldType, SelectOption, ActivityRule } from '../../types';
-import protocolService from '../../services/protocolService';
+import templateService from '../../services/templateService';
 
 const FIELD_TYPES = [
   {
@@ -120,10 +120,9 @@ const FIELD_TYPES = [
   },
 ];
 
-export const ActivityFormPage: React.FC = () => {
-  const { protocolId, visitId, activityId } = useParams<{ 
-    protocolId: string; 
-    visitId: string; 
+export const TemplateActivityFormPage: React.FC = () => {
+  const { templateId, activityId } = useParams<{ 
+    templateId: string; 
     activityId: string;
   }>();
   const navigate = useNavigate();
@@ -171,37 +170,36 @@ export const ActivityFormPage: React.FC = () => {
   const selectedFieldType = FIELD_TYPES.find(ft => ft.value === formData.fieldType);
 
   useEffect(() => {
-    if (isEditMode && protocolId && visitId && activityId) {
+    if (isEditMode && templateId && activityId) {
       loadActivityData();
-    } else if (!isEditMode && protocolId && visitId) {
+    } else if (!isEditMode && templateId) {
       // En modo creación, también cargar las actividades disponibles
       loadAvailableActivities();
     }
-  }, [isEditMode, protocolId, visitId, activityId]);
+  }, [isEditMode, templateId, activityId]);
 
   // Cargar actividades disponibles cuando se necesita para campos condicionales
   useEffect(() => {
-    if (protocolId && visitId && formData.fieldType) {
+    if (templateId && formData.fieldType) {
       loadAvailableActivities();
     }
-  }, [protocolId, visitId]);
+  }, [templateId]);
 
   const loadAvailableActivities = async () => {
     try {
-      const response = await protocolService.getProtocolById(protocolId!);
-      const protocol = response.data;
-      const visit = protocol.visits.find((v) => v.id === visitId);
+      const response = await templateService.getTemplateById(templateId!);
+      const template = response.data;
       
-      if (visit && visit.activities) {
+      if (template && template.activities) {
         // Solo incluir actividades con tipos de campo numéricos (para fórmulas)
         const numericFieldTypes = ['number_simple', 'number_compound'];
-        const numericActivities = visit.activities
+        const numericActivities = template.activities
           .filter((a) => numericFieldTypes.includes(a.fieldType))
           .map((a) => a.name);
         setAvailableActivities(numericActivities);
         
         // Cargar todas las actividades para campos condicionales (excluyendo calculados, que no pueden ser dependencias)
-        const activitiesForConditional = visit.activities
+        const activitiesForConditional = template.activities
           .filter((a) => a.fieldType !== 'calculated')
           .map((a) => ({
             id: a.id,
@@ -221,38 +219,30 @@ export const ActivityFormPage: React.FC = () => {
       setLoadingData(true);
       setError('');
       
-      // Cargar el protocolo completo para obtener los datos de la actividad
-      const response = await protocolService.getProtocolById(protocolId!);
-      const protocol = response.data;
-      
-      // Buscar la visita
-      const visit = protocol.visits.find((v) => v.id === visitId);
-      
-      if (!visit) {
-        setError('Visita no encontrada');
-        return;
-      }
+      // Cargar la plantilla completa para obtener los datos de la actividad
+      const response = await templateService.getTemplateById(templateId!);
+      const template = response.data;
       
       // Cargar lista de actividades disponibles (excluyendo la actual, solo numéricas)
       const numericFieldTypes = ['number_simple', 'number_compound'];
-      const otherActivities = visit.activities
+      const otherActivities = template.activities
         ?.filter((a) => a.id !== activityId && numericFieldTypes.includes(a.fieldType))
         .map((a) => a.name) || [];
       setAvailableActivities(otherActivities);
       
-        // Cargar todas las actividades para campos condicionales (excluyendo la actual y calculados, que no pueden ser dependencias)
-        const activitiesForConditional = visit.activities
-          ?.filter((a) => a.id !== activityId && a.fieldType !== 'calculated')
-          .map((a) => ({
-            id: a.id,
-            name: a.name,
-            fieldType: a.fieldType,
-            options: a.options,
-          })) || [];
+      // Cargar todas las actividades para campos condicionales (excluyendo la actual y calculados, que no pueden ser dependencias)
+      const activitiesForConditional = template.activities
+        ?.filter((a) => a.id !== activityId && a.fieldType !== 'calculated')
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          fieldType: a.fieldType,
+          options: a.options,
+        })) || [];
       setAvailableActivitiesForConditional(activitiesForConditional);
       
       // Buscar la actividad
-      const activity = visit.activities?.find((a) => a.id === activityId);
+      const activity = template.activities?.find((a) => a.id === activityId);
       
       if (activity) {
         // Migrar tipos antiguos (date, time) a datetime con configuración
@@ -538,14 +528,14 @@ export const ActivityFormPage: React.FC = () => {
 
       if (isEditMode && activityId) {
         // Actualizar actividad existente
-        await protocolService.updateActivity(protocolId!, visitId!, activityId, activityData);
+        await templateService.updateActivity(templateId!, activityId, activityData);
       } else {
         // Crear nueva actividad
-        await protocolService.addActivity(protocolId!, visitId!, activityData);
+        await templateService.addActivity(templateId!, activityData);
       }
 
-      // Volver a la configuración de la visita
-      navigate(`/protocols/${protocolId}/visits/${visitId}/edit`);
+      // Volver a la configuración de la plantilla
+      navigate(`/templates/${templateId}/edit`);
     } catch (err) {
       console.error('Error al guardar actividad:', err);
       setError('Error al guardar el campo. Por favor intenta nuevamente.');
@@ -591,7 +581,7 @@ export const ActivityFormPage: React.FC = () => {
     return (
       <Box>
         <Box display="flex" alignItems="center" gap={2} mb={3}>
-          <IconButton onClick={() => navigate(`/protocols/${protocolId}/visits/${visitId}/edit`)}>
+          <IconButton onClick={() => navigate(`/templates/${templateId}/edit`)}>
             <BackIcon />
           </IconButton>
           <Typography variant="h4" fontWeight="bold">
@@ -606,7 +596,7 @@ export const ActivityFormPage: React.FC = () => {
         )}
 
         <Alert severity="info" sx={{ mb: 3 }}>
-          Elegí el tipo de campo/pregunta que querés agregar a esta visita
+          Elegí el tipo de campo/pregunta que querés agregar a esta plantilla
         </Alert>
 
         <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' } }}>
@@ -650,7 +640,7 @@ export const ActivityFormPage: React.FC = () => {
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
-          <IconButton onClick={() => step === 'config' && !isEditMode ? setStep('type') : navigate(`/protocols/${protocolId}/visits/${visitId}/edit`)}>
+          <IconButton onClick={() => step === 'config' && !isEditMode ? setStep('type') : navigate(`/templates/${templateId}/edit`)}>
             <BackIcon />
           </IconButton>
           <Box>
@@ -2119,60 +2109,7 @@ export const ActivityFormPage: React.FC = () => {
       </Paper>
 
       {/* Toast de validación exitosa - deshabilitado temporalmente */}
-      {/* 
-      <Snackbar
-        open={showSuccessToast}
-        autoHideDuration={5000}
-        onClose={() => setShowSuccessToast(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert
-          onClose={() => setShowSuccessToast(false)}
-          severity="success"
-          sx={{ width: '100%', minWidth: 300 }}
-          icon={<CheckCircleIcon />}
-        >
-          Formulario válido! Todos los campos requeridos están completos.
-        </Alert>
-      </Snackbar>
-      */}
-
       {/* Dialog para mostrar valores validados - deshabilitado temporalmente */}
-      {/* 
-      <Dialog
-        open={showValuesDialog}
-        onClose={() => setShowValuesDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box display="flex" alignItems="center" gap={1}>
-            <CheckCircleIcon color="success" />
-            <Typography variant="h6">Validación Exitosa</Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            El formulario ha sido validado correctamente.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowValuesDialog(false)}>
-            Cerrar
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              setShowValuesDialog(false);
-              handleSave();
-            }}
-            startIcon={<SaveIcon />}
-          >
-            Guardar Ahora
-          </Button>
-        </DialogActions>
-      </Dialog>
-      */}
     </Box>
   );
 };

@@ -75,6 +75,13 @@ class ProtocolService {
     return apiService.delete<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits/${visitId}`);
   }
 
+  // Actualizar orden de visitas (múltiples)
+  async updateVisitsOrder(protocolId: string, visitsOrder: Array<{ visitId: string; order: number }>): Promise<ApiResponse<Protocol>> {
+    return apiService.put<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits/order`, {
+      visitsOrder,
+    });
+  }
+
   // ==========================================
   // MÉTODOS PARA ACTIVIDADES
   // ==========================================
@@ -111,6 +118,17 @@ class ProtocolService {
   // Eliminar regla clínica
   async deleteClinicalRule(protocolId: string, ruleId: string): Promise<ApiResponse<Protocol>> {
     return apiService.delete<ApiResponse<Protocol>>(`/protocols/${protocolId}/clinical-rules/${ruleId}`);
+  }
+
+  // ==========================================
+  // MÉTODOS PARA IMPORTAR PLANTILLAS
+  // ==========================================
+
+  // Importar plantilla en una visita
+  async importTemplate(protocolId: string, visitId: string, templateId: string): Promise<ApiResponse<Protocol>> {
+    return apiService.post<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits/${visitId}/import-template`, {
+      templateId,
+    });
   }
 }
 

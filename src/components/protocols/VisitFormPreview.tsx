@@ -1045,7 +1045,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                     // Calcular hora basada en la primera medición
                     const firstTime = normalizeTime(formValues[`${activity.id}_time_0`] || '');
                     if (firstTime && isValidTime(firstTime)) {
-                      measurementTime = addMinutesToTime(firstTime, activity.timeIntervalMinutes * i);
+                      measurementTime = addMinutesToTime(firstTime, (activity.timeIntervalMinutes ?? 0) * i);
                     }
                   } else {
                     measurementTime = formValues[`${activity.id}_time_${i}`];
@@ -1296,10 +1296,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           const timeKey = index !== undefined ? `${activity.id}_time_${index}` : `${activity.id}_time`;
           const dateValue = formValues[dateKey] || '';
           const timeValue = formValues[timeKey] || '';
-          
-          // Si solo hay uno, usar el valor principal
-          const hasDateValue = dateValue !== '';
-          const hasTimeValue = timeValue !== '';
           
           return (
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
@@ -1563,7 +1559,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                       const timeError = shouldShowDateTimeError(activity, index).time;
                       const hasTimeInterval = activity.timeIntervalMinutes && activity.timeIntervalMinutes > 0;
                       const isFirstMeasurement = index === 0;
-                      const shouldShowInput = !hasTimeInterval || isFirstMeasurement;
                       
                       // Si hay intervalo y no es la primera, mostrar solo lectura con la hora calculada
                       if (hasTimeInterval && !isFirstMeasurement) {

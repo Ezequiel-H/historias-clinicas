@@ -11,6 +11,9 @@ import { ProtocolDetailPage } from './pages/protocols/ProtocolDetailPage';
 import { VisitFormPage } from './pages/protocols/VisitFormPage';
 import { VisitConfigPage } from './pages/protocols/VisitConfigPage';
 import { ActivityFormPage } from './pages/protocols/ActivityFormPage';
+import { TemplateListPage } from './pages/templates/TemplateListPage';
+import { TemplateConfigPage } from './pages/templates/TemplateConfigPage';
+import { TemplateActivityFormPage } from './pages/templates/TemplateActivityFormPage';
 
 // Tema personalizado
 const theme = createTheme({
@@ -107,6 +110,12 @@ function App() {
               <Route path="protocols/:protocolId/visits/:visitId" element={<VisitFormPage />} />
               <Route path="protocols/:protocolId/visits/:visitId/edit" element={<VisitConfigPage />} />
               <Route path="protocols/:protocolId/visits/:visitId/activities/:activityId" element={<ActivityFormPage />} />
+
+              {/* Plantillas (Templates) */}
+              <Route path="templates" element={<TemplateListPage />} />
+              <Route path="templates/new" element={<TemplateConfigPage />} />
+              <Route path="templates/:templateId/edit" element={<TemplateConfigPage />} />
+              <Route path="templates/:templateId/activities/:activityId" element={<TemplateActivityFormPage />} />
 
               {/* Otras rutas pendientes de implementación */}
               <Route path="visits" element={<div>Visitas - En desarrollo</div>} />
