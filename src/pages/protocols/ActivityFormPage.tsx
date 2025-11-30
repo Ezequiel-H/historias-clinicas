@@ -50,8 +50,9 @@ import {
   CheckCircle as CheckCircleIcon,
   Code as CodeIcon,
   Link as LinkIcon,
+  Medication as MedicationIcon,
 } from '@mui/icons-material';
-import type { FieldType, SelectOption, ActivityRule } from '../../types';
+import type { FieldType, SelectOption, ActivityRule, MedicationTrackingConfig } from '../../types';
 import protocolService from '../../services/protocolService';
 
 const FIELD_TYPES = [
@@ -118,6 +119,13 @@ const FIELD_TYPES = [
     icon: <CodeIcon />,
     color: '#d32f2f',
   },
+  {
+    value: 'medication_tracking' as FieldType,
+    label: 'Seguimiento de Medicación',
+    description: 'Registra medicación entregada/devuelta y calcula adherencia',
+    icon: <MedicationIcon />,
+    color: '#00897b',
+  },
 ];
 
 export const ActivityFormPage: React.FC = () => {
@@ -162,6 +170,14 @@ export const ActivityFormPage: React.FC = () => {
   });
   const [isConditionalEnabled, setIsConditionalEnabled] = useState(false);
   const [compoundFields, setCompoundFields] = useState<Array<{name: string, label: string, unit?: string}>>([]);
+  const [medicationConfig, setMedicationConfig] = useState<MedicationTrackingConfig>({
+    medicationName: '',
+    dosageUnit: 'comprimidos',
+    frequency: {
+      amount: 1,
+      interval: 'daily',
+    },
+  });
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
@@ -361,6 +377,20 @@ export const ActivityFormPage: React.FC = () => {
         } else {
           setCompoundFields([]);
         }
+        
+        // Cargar configuración de seguimiento de medicación si existe
+        if (activity.medicationTrackingConfig) {
+          setMedicationConfig(activity.medicationTrackingConfig);
+        } else {
+          setMedicationConfig({
+            medicationName: '',
+            dosageUnit: 'comprimidos',
+            frequency: {
+              amount: 1,
+              interval: 'daily',
+            },
+          });
+        }
       } else {
         setError('Actividad no encontrada');
       }
@@ -501,6 +531,25 @@ export const ActivityFormPage: React.FC = () => {
     // Agregar fórmula de cálculo si es campo calculado
     if (formData.fieldType === 'calculated' && formData.calculationFormula) {
       activityData.calculationFormula = formData.calculationFormula.trim();
+    }
+
+    // Agregar configuración de seguimiento de medicación
+    if (formData.fieldType === 'medication_tracking') {
+      activityData.medicationTrackingConfig = {
+        medicationName: medicationConfig.medicationName,
+        dosageUnit: medicationConfig.dosageUnit,
+        frequency: {
+          amount: medicationConfig.frequency.amount,
+          interval: medicationConfig.frequency.interval,
+          ...(medicationConfig.frequency.interval === 'every_x_hours' && medicationConfig.frequency.hoursInterval 
+            ? { hoursInterval: medicationConfig.frequency.hoursInterval } 
+            : {}),
+          ...(medicationConfig.frequency.interval === 'custom' && medicationConfig.frequency.customDescription
+            ? { customDescription: medicationConfig.frequency.customDescription }
+            : {}),
+        },
+        ...(medicationConfig.expectedDailyDose ? { expectedDailyDose: medicationConfig.expectedDailyDose } : {}),
+      };
     }
 
     // Agregar configuración condicional si está habilitada y configurada (para cualquier tipo de campo)
@@ -1042,6 +1091,163 @@ export const ActivityFormPage: React.FC = () => {
                   sx={{ mt: 2 }}
                 />
               )}
+            </Box>
+          )}
+
+          {/* Configuración de seguimiento de medicación */}
+          {formData.fieldType === 'medication_tracking' && (
+            <Box>
+              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <MedicationIcon color="primary" />
+                Configuración del Seguimiento de Medicación
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Configura los parámetros de la medicación para que el sistema calcule automáticamente la adherencia al tratamiento.
+              </Typography>
+              
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField
+                  label="Nombre del Medicamento"
+                  value={medicationConfig.medicationName}
+                  onChange={(e) => setMedicationConfig({
+                    ...medicationConfig,
+                    medicationName: e.target.value,
+                  })}
+                  fullWidth
+                  placeholder="Ej: Metformina 500mg"
+                  helperText="Nombre comercial o genérico del medicamento"
+                />
+                
+                <FormControl fullWidth>
+                  <InputLabel>Unidad de Dosificación</InputLabel>
+                  <Select
+                    value={medicationConfig.dosageUnit}
+                    label="Unidad de Dosificación"
+                    onChange={(e) => setMedicationConfig({
+                      ...medicationConfig,
+                      dosageUnit: e.target.value,
+                    })}
+                  >
+                    <MenuItem value="comprimidos">Comprimidos</MenuItem>
+                    <MenuItem value="cápsulas">Cápsulas</MenuItem>
+                    <MenuItem value="tabletas">Tabletas</MenuItem>
+                    <MenuItem value="ml">Mililitros (ml)</MenuItem>
+                    <MenuItem value="gotas">Gotas</MenuItem>
+                    <MenuItem value="sobres">Sobres</MenuItem>
+                    <MenuItem value="parches">Parches</MenuItem>
+                    <MenuItem value="ampollas">Ampollas</MenuItem>
+                    <MenuItem value="unidades">Unidades</MenuItem>
+                  </Select>
+                </FormControl>
+                
+                <Divider />
+                
+                <Typography variant="subtitle2" gutterBottom>
+                  Frecuencia de Administración
+                </Typography>
+                
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <TextField
+                    label="Cantidad por toma"
+                    type="number"
+                    value={medicationConfig.frequency.amount}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) || 1;
+                      setMedicationConfig({
+                        ...medicationConfig,
+                        frequency: {
+                          ...medicationConfig.frequency,
+                          amount: Math.max(1, value),
+                        },
+                      });
+                    }}
+                    inputProps={{ min: 1 }}
+                    sx={{ width: 150 }}
+                    helperText={`${medicationConfig.dosageUnit} por toma`}
+                  />
+                  
+                  <FormControl sx={{ minWidth: 250 }}>
+                    <InputLabel>Frecuencia</InputLabel>
+                    <Select
+                      value={medicationConfig.frequency.interval}
+                      label="Frecuencia"
+                      onChange={(e) => setMedicationConfig({
+                        ...medicationConfig,
+                        frequency: {
+                          ...medicationConfig.frequency,
+                          interval: e.target.value as MedicationTrackingConfig['frequency']['interval'],
+                        },
+                      })}
+                    >
+                      <MenuItem value="daily">Una vez al día</MenuItem>
+                      <MenuItem value="twice_daily">Dos veces al día (cada 12 horas)</MenuItem>
+                      <MenuItem value="three_times_daily">Tres veces al día (cada 8 horas)</MenuItem>
+                      <MenuItem value="every_x_hours">Cada X horas (personalizado)</MenuItem>
+                      <MenuItem value="weekly">Una vez a la semana</MenuItem>
+                      <MenuItem value="custom">Frecuencia personalizada</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+                
+                {medicationConfig.frequency.interval === 'every_x_hours' && (
+                  <TextField
+                    label="Intervalo en horas"
+                    type="number"
+                    value={medicationConfig.frequency.hoursInterval || ''}
+                    onChange={(e) => setMedicationConfig({
+                      ...medicationConfig,
+                      frequency: {
+                        ...medicationConfig.frequency,
+                        hoursInterval: parseInt(e.target.value) || undefined,
+                      },
+                    })}
+                    inputProps={{ min: 1, max: 168 }}
+                    sx={{ width: 200 }}
+                    placeholder="Ej: 6"
+                    helperText="Cada cuántas horas debe tomarse"
+                  />
+                )}
+                
+                {medicationConfig.frequency.interval === 'custom' && (
+                  <TextField
+                    label="Descripción de la frecuencia"
+                    value={medicationConfig.frequency.customDescription || ''}
+                    onChange={(e) => setMedicationConfig({
+                      ...medicationConfig,
+                      frequency: {
+                        ...medicationConfig.frequency,
+                        customDescription: e.target.value,
+                      },
+                    })}
+                    fullWidth
+                    placeholder="Ej: Lunes, Miércoles y Viernes"
+                    helperText="Describe el régimen de dosificación personalizado"
+                  />
+                )}
+                
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  <Typography variant="body2" gutterBottom>
+                    <strong>Dosis diaria esperada:</strong>{' '}
+                    {(() => {
+                      const { amount, interval, hoursInterval } = medicationConfig.frequency;
+                      let dailyDoses = 1;
+                      switch (interval) {
+                        case 'daily': dailyDoses = 1; break;
+                        case 'twice_daily': dailyDoses = 2; break;
+                        case 'three_times_daily': dailyDoses = 3; break;
+                        case 'every_x_hours': dailyDoses = hoursInterval ? Math.floor(24 / hoursInterval) : 1; break;
+                        case 'weekly': dailyDoses = 1/7; break;
+                        case 'custom': dailyDoses = 1; break;
+                      }
+                      const daily = amount * dailyDoses;
+                      return `${daily.toFixed(daily % 1 === 0 ? 0 : 2)} ${medicationConfig.dosageUnit}/día`;
+                    })()}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Este valor se usará para calcular la adherencia comparando con los {medicationConfig.dosageUnit} consumidos.
+                  </Typography>
+                </Alert>
+              </Box>
             </Box>
           )}
 
@@ -1725,6 +1931,73 @@ export const ActivityFormPage: React.FC = () => {
               <Button variant="outlined" disabled size="small">
                 Seleccionar archivo...
               </Button>
+            )}
+            
+            {formData.fieldType === 'medication_tracking' && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Alert severity="info" icon={<MedicationIcon />}>
+                  <Typography variant="subtitle2">
+                    {medicationConfig.medicationName || '[Nombre del medicamento]'}
+                  </Typography>
+                  <Typography variant="body2">
+                    Dosis: {medicationConfig.frequency.amount} {medicationConfig.dosageUnit}{' '}
+                    {medicationConfig.frequency.interval === 'daily' && 'una vez al día'}
+                    {medicationConfig.frequency.interval === 'twice_daily' && 'dos veces al día'}
+                    {medicationConfig.frequency.interval === 'three_times_daily' && 'tres veces al día'}
+                    {medicationConfig.frequency.interval === 'every_x_hours' && 
+                      `cada ${medicationConfig.frequency.hoursInterval || '?'} horas`}
+                    {medicationConfig.frequency.interval === 'weekly' && 'una vez por semana'}
+                    {medicationConfig.frequency.interval === 'custom' && 
+                      (medicationConfig.frequency.customDescription || 'frecuencia personalizada')}
+                  </Typography>
+                </Alert>
+                
+                <TextField
+                  type="date"
+                  label="Fecha de la última visita"
+                  disabled
+                  size="small"
+                  sx={{ width: 250 }}
+                  InputLabelProps={{ shrink: true }}
+                />
+                
+                <TextField
+                  type="number"
+                  label={`${medicationConfig.dosageUnit.charAt(0).toUpperCase() + medicationConfig.dosageUnit.slice(1)} entregados en la última visita`}
+                  disabled
+                  size="small"
+                  sx={{ width: 300 }}
+                  placeholder="Ej: 60"
+                />
+                
+                <TextField
+                  type="number"
+                  label={`${medicationConfig.dosageUnit.charAt(0).toUpperCase() + medicationConfig.dosageUnit.slice(1)} devueltos hoy`}
+                  disabled
+                  size="small"
+                  sx={{ width: 300 }}
+                  placeholder="Ej: 5"
+                />
+                
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.100' }}>
+                  <Typography variant="subtitle2" gutterBottom color="primary">
+                    📊 Cálculos Automáticos de Adherencia
+                  </Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                    <Typography variant="body2">Días desde última visita:</Typography>
+                    <Typography variant="body2" fontWeight="bold">— días</Typography>
+                    
+                    <Typography variant="body2">Dosis esperadas:</Typography>
+                    <Typography variant="body2" fontWeight="bold">— {medicationConfig.dosageUnit}</Typography>
+                    
+                    <Typography variant="body2">Consumo real:</Typography>
+                    <Typography variant="body2" fontWeight="bold">— {medicationConfig.dosageUnit}</Typography>
+                    
+                    <Typography variant="body2">Adherencia:</Typography>
+                    <Typography variant="body2" fontWeight="bold">—%</Typography>
+                  </Box>
+                </Paper>
+              </Box>
             )}
             
             {/* Campos de fecha y hora en la vista previa */}
