@@ -390,9 +390,8 @@ export const TemplateActivityFormPage: React.FC = () => {
     };
 
     // Agregar configuraciones opcionales
-    if (formData.measurementUnit) {
-      activityData.measurementUnit = formData.measurementUnit;
-    }
+    // Siempre enviar measurementUnit, incluso si está vacío, para que se actualice en la DB
+    activityData.measurementUnit = formData.measurementUnit || '';
     
     // Agregar decimales para campos numéricos y calculados
     const numericTypes = ['number_simple', 'number_compound', 'calculated'];
@@ -427,9 +426,8 @@ export const TemplateActivityFormPage: React.FC = () => {
       };
     }
     
-    if (formData.helpText) {
-      activityData.helpText = formData.helpText;
-    }
+    // Siempre enviar helpText, incluso si está vacío, para que se actualice en la DB
+    activityData.helpText = formData.helpText || '';
     if (formData.allowMultiple) {
       activityData.allowMultiple = formData.allowMultiple;
       activityData.repeatCount = formData.repeatCount;
@@ -452,9 +450,8 @@ export const TemplateActivityFormPage: React.FC = () => {
       activityData.requireTime = formData.requireTime;
       if (formData.allowMultiple) {
         activityData.requireTimePerMeasurement = formData.requireTimePerMeasurement;
-        if (formData.timeIntervalMinutes) {
-          activityData.timeIntervalMinutes = formData.timeIntervalMinutes;
-        }
+        // Siempre enviar timeIntervalMinutes, incluso si está vacío, para que se actualice en la DB
+        activityData.timeIntervalMinutes = formData.timeIntervalMinutes || undefined;
       }
     }
     
@@ -489,8 +486,9 @@ export const TemplateActivityFormPage: React.FC = () => {
     activityData.validationRules = validationRules;
 
     // Agregar fórmula de cálculo si es campo calculado
-    if (formData.fieldType === 'calculated' && formData.calculationFormula) {
-      activityData.calculationFormula = formData.calculationFormula.trim();
+    // Siempre enviar calculationFormula, incluso si está vacío, para que se actualice en la DB
+    if (formData.fieldType === 'calculated') {
+      activityData.calculationFormula = formData.calculationFormula?.trim() || '';
     }
 
     // Agregar configuración condicional si está habilitada y configurada (para cualquier tipo de campo)

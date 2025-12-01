@@ -116,7 +116,7 @@ const SortableItem: React.FC<SortableItemProps> = ({
               </Box>
 
               <Typography variant="body2" color="text.secondary" paragraph>
-                {activity.description}
+                {activity.helpText}
               </Typography>
 
               <Box display="flex" gap={1} flexWrap="wrap">

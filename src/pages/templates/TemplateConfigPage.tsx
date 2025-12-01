@@ -155,11 +155,25 @@ export const TemplateConfigPage: React.FC = () => {
     );
   }
 
+  const isBasicTemplate = name.toLowerCase() === 'visita basica' || template?.name.toLowerCase() === 'visita basica';
+
   return (
     <Box>
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
           {error}
+        </Alert>
+      )}
+
+      {isBasicTemplate && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2" fontWeight="bold" gutterBottom>
+            Plantilla Especial: Visita Básica
+          </Typography>
+          <Typography variant="body2">
+            Esta plantilla se incluye automáticamente en todas las visitas nuevas que se creen. 
+            Podés modificar los campos aquí y los cambios se aplicarán a las visitas nuevas.
+          </Typography>
         </Alert>
       )}
 
@@ -278,7 +292,7 @@ export const TemplateConfigPage: React.FC = () => {
                       </Box>
 
                       <Typography variant="body2" color="text.secondary" paragraph>
-                        {activity.description}
+                        {activity.helpText}
                       </Typography>
 
                       <Box display="flex" gap={1} flexWrap="wrap">

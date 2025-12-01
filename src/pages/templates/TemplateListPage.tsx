@@ -63,14 +63,24 @@ export const TemplateListPage: React.FC = () => {
   const handleDelete = async () => {
     if (!templateToDelete) return;
 
+    // Prevenir eliminación de la plantilla básica
+    const isBasicTemplate = templateToDelete.name.toLowerCase() === 'visita basica';
+    if (isBasicTemplate) {
+      setError('No se puede eliminar la plantilla "Visita Basica". Esta plantilla es requerida por el sistema.');
+      setDeleteDialogOpen(false);
+      setTemplateToDelete(null);
+      return;
+    }
+
     try {
       setDeleting(true);
       await templateService.deleteTemplate(templateToDelete.id);
       setTemplates(templates.filter(t => t.id !== templateToDelete.id));
       setDeleteDialogOpen(false);
       setTemplateToDelete(null);
-    } catch (err) {
-      setError('Error al eliminar la plantilla');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Error al eliminar la plantilla';
+      setError(errorMessage);
       console.error(err);
     } finally {
       setDeleting(false);
@@ -165,45 +175,65 @@ export const TemplateListPage: React.FC = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredTemplates.map((template) => (
-                <TableRow key={template.id} hover>
-                  <TableCell>{template.name}</TableCell>
-                  <TableCell>
-                    {template.description || (
-                      <Typography variant="body2" color="text.secondary" fontStyle="italic">
-                        Sin descripción
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={`${template.activities?.length || 0} actividades`}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                    />
-                  </TableCell>
-                  <TableCell>{formatDate(template.updatedAt)}</TableCell>
-                  <TableCell align="center">
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => navigate(`/templates/${template.id}/edit`)}
-                      title="Editar"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => openDeleteDialog(template)}
-                      title="Eliminar"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))
+              filteredTemplates.map((template) => {
+                const isBasicTemplate = template.name.toLowerCase() === 'visita basica';
+                return (
+                  <TableRow key={template.id} hover>
+                    <TableCell>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        {template.name}
+                        {isBasicTemplate && (
+                          <Chip
+                            label="Incluida automáticamente"
+                            size="small"
+                            color="info"
+                            variant="outlined"
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      {template.description || (
+                        <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                          Sin descripción
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={`${template.activities?.length || 0} actividades`}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>{formatDate(template.updatedAt)}</TableCell>
+                    <TableCell align="center">
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => navigate(`/templates/${template.id}/edit`)}
+                        title="Editar"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => openDeleteDialog(template)}
+                        title={isBasicTemplate ? "No se puede eliminar esta plantilla" : "Eliminar"}
+                        disabled={isBasicTemplate}
+                        sx={{ 
+                          opacity: isBasicTemplate ? 0.3 : 1,
+                          cursor: isBasicTemplate ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
