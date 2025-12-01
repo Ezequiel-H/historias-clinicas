@@ -22,7 +22,6 @@ import {
   Dashboard as DashboardIcon,
   Description as DescriptionIcon,
   People as PeopleIcon,
-  Assignment as AssignmentIcon,
   ExitToApp as LogoutIcon,
   AccountCircle as AccountIcon,
   ContentCopy as TemplateIcon,
@@ -53,12 +52,6 @@ const menuItems: MenuItemType[] = [
     text: 'Plantillas',
     icon: <TemplateIcon />,
     path: '/templates',
-  },
-  {
-    text: 'Visitas',
-    icon: <AssignmentIcon />,
-    path: '/visits',
-    roles: ['medico', 'investigador_principal', 'admin'],
   },
   {
     text: 'Usuarios',

@@ -123,16 +123,6 @@ export const DashboardPage: React.FC = () => {
             >
               Crear Nuevo Protocolo
             </Button>
-            {(user?.role === 'medico' || user?.role === 'investigador_principal') && (
-              <Button
-                variant="outlined"
-                startIcon={<VisitIcon />}
-                onClick={() => navigate('/visits/new')}
-                fullWidth
-              >
-                Registrar Nueva Visita
-              </Button>
-            )}
             <Button
               variant="outlined"
               onClick={() => navigate('/protocols')}

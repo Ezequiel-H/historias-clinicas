@@ -47,7 +47,7 @@ export const ProtocolFormPage: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
-  const [tabValue, setTabValue] = useState(0);
+  const [tabValue, setTabValue] = useState(isEditMode ? 1 : 0);
   const [visits, setVisits] = useState<Visit[]>([]);
 
   useEffect(() => {

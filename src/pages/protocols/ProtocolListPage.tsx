@@ -25,9 +25,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon,
   Delete as DeleteIcon,
-  Visibility as ViewIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
 import type { Protocol } from '../../types';
@@ -195,7 +193,12 @@ export const ProtocolListPage: React.FC = () => {
               </TableRow>
             ) : (
               filteredProtocols.map((protocol) => (
-                <TableRow key={protocol.id} hover>
+                <TableRow 
+                  key={protocol.id} 
+                  hover
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/protocols/${protocol.id}/edit`)}
+                >
                   <TableCell>{protocol.code}</TableCell>
                   <TableCell>{protocol.name}</TableCell>
                   <TableCell>{protocol.sponsor}</TableCell>
@@ -207,23 +210,7 @@ export const ProtocolListPage: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell>{formatDate(protocol.updatedAt)}</TableCell>
-                  <TableCell align="center">
-                    <IconButton
-                      size="small"
-                      color="info"
-                      onClick={() => navigate(`/protocols/${protocol.id}`)}
-                      title="Ver detalles"
-                    >
-                      <ViewIcon />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => navigate(`/protocols/${protocol.id}/edit`)}
-                      title="Editar"
-                    >
-                      <EditIcon />
-                    </IconButton>
+                  <TableCell align="center" onClick={(e) => e.stopPropagation()}>
                     <IconButton
                       size="small"
                       color="error"

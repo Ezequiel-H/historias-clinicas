@@ -12,6 +12,11 @@ import {
   Chip,
   Alert,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -161,6 +166,10 @@ export const VisitManager: React.FC<VisitManagerProps> = ({
 }) => {
   const navigate = useNavigate();
   const [isReordering, setIsReordering] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [visitToDelete, setVisitToDelete] = useState<Visit | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -178,9 +187,46 @@ export const VisitManager: React.FC<VisitManagerProps> = ({
   };
 
   const handleDeleteVisit = (visitId: string) => {
-    if (window.confirm('¿Está seguro de eliminar esta visita?')) {
-      onVisitsChange(visits.filter((v) => v.id !== visitId));
+    const visit = visits.find((v) => v.id === visitId);
+    if (visit) {
+      setVisitToDelete(visit);
+      setDeleteDialogOpen(true);
     }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!visitToDelete) {
+      return;
+    }
+
+    // Si estamos en modo creación, solo eliminar localmente
+    if (protocolId === 'new') {
+      onVisitsChange(visits.filter((v) => v.id !== visitToDelete.id));
+      setDeleteDialogOpen(false);
+      setVisitToDelete(null);
+      return;
+    }
+
+    // Eliminar del backend
+    try {
+      setDeleting(true);
+      setError('');
+      await protocolService.deleteVisit(protocolId, visitToDelete.id);
+      onVisitsChange(visits.filter((v) => v.id !== visitToDelete.id));
+      setDeleteDialogOpen(false);
+      setVisitToDelete(null);
+    } catch (err) {
+      setError('Error al eliminar la visita');
+      console.error(err);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const closeDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setVisitToDelete(null);
+    setError('');
   };
 
   const getVisitTypeLabel = (type: string) => {
@@ -319,6 +365,30 @@ export const VisitManager: React.FC<VisitManagerProps> = ({
           </SortableContext>
         </DndContext>
       )}
+
+      {/* Dialog de confirmación de eliminación */}
+      <Dialog open={deleteDialogOpen} onClose={closeDeleteDialog}>
+        <DialogTitle>Confirmar Eliminación</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            ¿Está seguro que desea eliminar la visita <strong>{visitToDelete?.name}</strong>?
+            Esta acción no se puede deshacer.
+          </DialogContentText>
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError('')}>
+              {error}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDeleteDialog} disabled={deleting}>
+            Cancelar
+          </Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained" disabled={deleting}>
+            {deleting ? <CircularProgress size={24} /> : 'Eliminar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

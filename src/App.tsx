@@ -118,7 +118,6 @@ function App() {
               <Route path="templates/:templateId/activities/:activityId" element={<TemplateActivityFormPage />} />
 
               {/* Otras rutas pendientes de implementación */}
-              <Route path="visits" element={<div>Visitas - En desarrollo</div>} />
               <Route path="users" element={<div>Usuarios - En desarrollo</div>} />
             </Route>
 

@@ -119,16 +119,33 @@ export const VisitFormPage: React.FC = () => {
       if (isEditMode && visitId) {
         // Actualizar visita existente
         await protocolService.updateVisit(protocolId!, visitId, visitData);
+        // Recargar los datos del protocolo para actualizar el orden
+        await loadProtocolData();
+        // Volver a la página de edición del protocolo
+        navigate(`/protocols/${protocolId}/edit`);
       } else {
         // Crear nueva visita
-        await protocolService.addVisit(protocolId!, visitData);
+        const response = await protocolService.addVisit(protocolId!, visitData);
+        // Obtener el protocolo actualizado con la nueva visita
+        const updatedProtocol = response.data;
+        // Encontrar la visita recién creada
+        // Buscar la visita que coincida con el nombre y tipo, y tenga el orden más alto (la más reciente)
+        const matchingVisits = updatedProtocol.visits?.filter((v: any) => v.name === name && v.type === type) || [];
+        const newVisit = matchingVisits.length > 0 
+          ? matchingVisits.reduce((latest: any, current: any) => 
+              current.order > latest.order ? current : latest
+            )
+          : null;
+        
+        if (newVisit && newVisit.id) {
+          // Navegar directamente a la página de configuración de la nueva visita
+          navigate(`/protocols/${protocolId}/visits/${newVisit.id}/edit`);
+        } else {
+          // Si no se encuentra, recargar y volver a la lista
+          await loadProtocolData();
+          navigate(`/protocols/${protocolId}/edit`);
+        }
       }
-
-      // Recargar los datos del protocolo para actualizar el orden
-      await loadProtocolData();
-
-      // Volver a la página de edición del protocolo
-      navigate(`/protocols/${protocolId}/edit`);
     } catch (err) {
       console.error('Error al guardar visita:', err);
       setError('Error al guardar la visita. Por favor intenta nuevamente.');
