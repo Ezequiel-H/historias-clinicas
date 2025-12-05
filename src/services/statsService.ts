@@ -7,7 +7,7 @@ export interface DashboardStats {
   };
   users: {
     active: number;
-    medicos: number;
+    doctors: number;
     investigadores: number;
   };
   topSponsors: Array<{

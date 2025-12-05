@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { LocalHospital as HospitalIcon } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
+import { authService } from '../../services/authService';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -27,8 +28,17 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
+      // Login and get the response to check user role
+      const response = await authService.login({ email, password });
+      // Also call the context login to update the auth state
       await login(email, password);
-      navigate('/dashboard');
+      
+      // Redirect based on user role from the response
+      if (response.data.user.role === 'doctor') {
+        navigate('/doctor/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       setError('Credenciales inválidas. Por favor, intente nuevamente.');
     } finally {
@@ -125,7 +135,33 @@ export const LoginPage: React.FC = () => {
           </Box>
 
           <Box sx={{ mt: 2, textAlign: 'center' }}>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              ¿Es médico y no tiene cuenta?
+            </Typography>
+            <Button
+              type="button"
+              fullWidth
+              variant="outlined"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Button clicked, navigating to /signup');
+                // Try navigate first
+                const result = navigate('/signup', { replace: false });
+                console.log('Navigate result:', result);
+                // If navigate doesn't work, use window.location as fallback
+                setTimeout(() => {
+                  if (window.location.pathname !== '/signup') {
+                    console.log('Navigate did not work, using window.location');
+                    window.location.href = '/signup';
+                  }
+                }, 100);
+              }}
+              disabled={loading}
+            >
+              Registrarse como Médico
+            </Button>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>
               Credenciales de prueba: cualquier email/password
             </Typography>
           </Box>

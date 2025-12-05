@@ -37,29 +37,45 @@ interface MenuItemType {
   roles?: string[];
 }
 
-const menuItems: MenuItemType[] = [
-  {
-    text: 'Dashboard',
-    icon: <DashboardIcon />,
-    path: '/dashboard',
-  },
-  {
-    text: 'Protocolos',
-    icon: <DescriptionIcon />,
-    path: '/protocols',
-  },
-  {
-    text: 'Plantillas',
-    icon: <TemplateIcon />,
-    path: '/templates',
-  },
-  {
-    text: 'Usuarios',
-    icon: <PeopleIcon />,
-    path: '/users',
-    roles: ['admin'],
-  },
-];
+const getMenuItems = (userRole?: string): MenuItemType[] => {
+  const baseItems: MenuItemType[] = [
+    {
+      text: 'Dashboard',
+      icon: <DashboardIcon />,
+      path: userRole === 'doctor' ? '/doctor/dashboard' : '/dashboard',
+    },
+  ];
+
+  // Add Protocols only for non-doctor users (admins and investigadores)
+  if (userRole !== 'doctor') {
+    baseItems.push({
+      text: 'Protocolos',
+      icon: <DescriptionIcon />,
+      path: '/protocols',
+    });
+  }
+
+  // Add items only for non-doctor users
+  if (userRole !== 'doctor') {
+    baseItems.push({
+      text: 'Plantillas',
+      icon: <TemplateIcon />,
+      path: '/templates',
+    });
+  }
+
+  // Add admin-only items
+  if (userRole === 'admin') {
+    baseItems.push({
+      text: 'Usuarios',
+      icon: <PeopleIcon />,
+      path: '/users',
+      roles: ['admin'],
+    });
+  }
+
+  return baseItems;
+};
 
 export const DashboardLayout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -90,6 +106,8 @@ export const DashboardLayout: React.FC = () => {
     navigate(path);
     setMobileOpen(false);
   };
+
+  const menuItems = getMenuItems(user?.role);
 
   const drawer = (
     <Box>
