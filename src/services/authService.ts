@@ -11,10 +11,24 @@ export interface LoginResponse {
   token: string;
 }
 
+export type SignupCredentials = {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  licenseNumber: string;
+  sealSignaturePhoto: string;
+};
+
 class AuthService {
   // Login de usuario
   async login(credentials: LoginCredentials): Promise<ApiResponse<LoginResponse>> {
     return apiService.post<ApiResponse<LoginResponse>>('/auth/login', credentials);
+  }
+
+  // Registro de doctor
+  async signup(credentials: SignupCredentials): Promise<ApiResponse<LoginResponse>> {
+    return apiService.post<ApiResponse<LoginResponse>>('/auth/signup', credentials);
   }
 
   // Obtener usuario actual

@@ -5,7 +5,7 @@ import { CircularProgress, Box } from '@mui/material';
 
 interface PrivateRouteProps {
   children: React.ReactNode;
-  requiredRole?: 'admin' | 'medico' | 'investigador_principal';
+  requiredRole?: 'admin' | 'doctor' | 'investigador_principal';
 }
 
 export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, requiredRole }) => {

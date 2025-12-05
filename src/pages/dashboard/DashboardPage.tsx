@@ -139,8 +139,8 @@ export const DashboardPage: React.FC = () => {
           color="secondary.main"
         />
         <StatCard
-          title="Médicos Activos"
-          value={stats.users.medicos}
+          title="Doctores Activos"
+          value={stats.users.doctors}
           icon={<PeopleIcon sx={{ fontSize: 32 }} />}
           color="success.main"
         />

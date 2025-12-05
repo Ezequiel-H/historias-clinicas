@@ -2,9 +2,12 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import { AuthProvider } from './contexts/AuthContext';
 import { PrivateRoute } from './components/common/PrivateRoute';
+import { RoleBasedRedirect } from './components/common/RoleBasedRedirect';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { LoginPage } from './pages/auth/LoginPage';
+import { SignUpPage } from './pages/auth/SignUpPage';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
+import { DoctorDashboardPage } from './pages/dashboard/DoctorDashboardPage';
 import { ProtocolListPage } from './pages/protocols/ProtocolListPage';
 import { ProtocolFormPage } from './pages/protocols/ProtocolFormPage';
 import { ProtocolDetailPage } from './pages/protocols/ProtocolDetailPage';
@@ -83,8 +86,9 @@ function App() {
       <Router>
         <AuthProvider>
           <Routes>
-            {/* Ruta de login */}
+            {/* Rutas de autenticación */}
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignUpPage />} />
 
             {/* Rutas protegidas */}
             <Route
@@ -96,8 +100,9 @@ function App() {
               }
             >
               {/* Dashboard */}
-              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route index element={<RoleBasedRedirect />} />
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="doctor/dashboard" element={<DoctorDashboardPage />} />
 
               {/* Protocolos */}
               <Route path="protocols" element={<ProtocolListPage />} />

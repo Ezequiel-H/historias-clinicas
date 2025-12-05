@@ -131,7 +131,11 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'medico' | 'investigador_principal';
+  firstName?: string;
+  lastName?: string;
+  licenseNumber?: string;
+  sealSignaturePhoto?: string;
+  role: 'admin' | 'doctor' | 'investigador_principal';
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
