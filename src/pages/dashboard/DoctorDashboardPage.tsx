@@ -103,10 +103,10 @@ export const DoctorDashboardPage: React.FC = () => {
                   variant="outlined"
                   fullWidth
                   startIcon={<CheckIcon />}
-                  onClick={() => navigate('/protocols')}
+                  onClick={() => navigate('/patient-visits/new')}
                   sx={{ py: 2 }}
                 >
-                  Completar Visitas
+                  Cargar Visita
                 </Button>
               </Grid>
               <Grid item xs={12} sm={6} md={4}>
