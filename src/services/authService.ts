@@ -62,6 +62,11 @@ class AuthService {
   async updateUserStatus(userId: string, isActive: boolean): Promise<ApiResponse<User>> {
     return apiService.patch<ApiResponse<User>>(`/auth/users/${userId}`, { isActive });
   }
+
+  // Actualizar foto de firma de un usuario (solo admins)
+  async updateUserSignaturePhoto(userId: string, sealSignaturePhoto: string): Promise<ApiResponse<User>> {
+    return apiService.patch<ApiResponse<User>>(`/auth/users/${userId}/signature-photo`, { sealSignaturePhoto });
+  }
 }
 
 export const authService = new AuthService();
