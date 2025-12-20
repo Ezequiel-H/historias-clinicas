@@ -130,6 +130,28 @@ class ProtocolService {
       templateId,
     });
   }
+
+  // Generar historia clínica con IA
+  async generateClinicalHistory(protocolId: string, visitId: string, visitData: any): Promise<Blob> {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+    const token = localStorage.getItem('authToken');
+    
+    const response = await fetch(`${API_BASE_URL}/protocols/${protocolId}/visits/${visitId}/generate-clinical-history`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ visitData }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Error al generar historia clínica' }));
+      throw new Error(error.error || 'Error al generar historia clínica');
+    }
+
+    return response.blob();
+  }
 }
 
 export const protocolService = new ProtocolService();

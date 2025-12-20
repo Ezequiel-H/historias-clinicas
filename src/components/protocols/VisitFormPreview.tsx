@@ -25,7 +25,10 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   CheckCircle as CheckCircleIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
+import { CircularProgress } from '@mui/material';
+import protocolService from '../../services/protocolService';
 import type { Activity, ActivityRule } from '../../types';
 
 interface VisitFormPreviewProps {
@@ -33,6 +36,8 @@ interface VisitFormPreviewProps {
   onClose: () => void;
   visitName: string;
   activities: Activity[];
+  protocolId?: string;
+  visitId?: string;
 }
 
 interface ValidationError {
@@ -55,13 +60,17 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   onClose,
   visitName,
   activities,
+  protocolId,
+  visitId,
 }) => {
   const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [aiDescriptions, setAiDescriptions] = useState<Record<string, string>>({});
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [showValuesDialog, setShowValuesDialog] = useState(false);
   const [validatedFormData, setValidatedFormData] = useState<any>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   // Función helper para normalizar tiempo a formato HH:MM
   const normalizeTime = (timeValue: string): string => {
@@ -1011,6 +1020,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             fieldType: activity.fieldType,
             helpText: activity.helpText,
             description: activity.description,
+            aiDescription: aiDescriptions[activity.id] || '',
           };
 
           // Incluir campos si existen en la actividad
@@ -1689,6 +1699,26 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           </>
         )}
 
+        {/* Campo de descripción para IA */}
+        <Box sx={{ mt: 2 }}>
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            label="Descripción para la IA (opcional)"
+            placeholder="Describe qué se hizo en esta actividad durante la visita. Esta información será usada para generar la historia clínica."
+            value={aiDescriptions[activity.id] || ''}
+            onChange={(e) => {
+              setAiDescriptions(prev => ({
+                ...prev,
+                [activity.id]: e.target.value,
+              }));
+            }}
+            helperText="Esta descripción ayudará a la IA a generar un relato más preciso de la historia clínica"
+            size="small"
+          />
+        </Box>
+
         {/* Mostrar errores de validación para esta actividad */}
         {showValidation && activityErrors.length > 0 && (
           <Box sx={{ mt: 2 }}>
@@ -1716,6 +1746,43 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         )}
       </Paper>
     );
+  };
+
+  const handleGeneratePdf = async () => {
+    if (!protocolId || !visitId || !validatedFormData) {
+      return;
+    }
+
+    try {
+      setGeneratingPdf(true);
+      
+      // Agregar aiDescriptions a los datos
+      const visitDataWithAi = {
+        ...validatedFormData,
+        activities: validatedFormData.activities.map((activity: any) => ({
+          ...activity,
+          aiDescription: aiDescriptions[activity.id] || '',
+        })),
+      };
+
+      const blob = await protocolService.generateClinicalHistory(protocolId, visitId, visitDataWithAi);
+      
+      // Crear URL y descargar
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `historia-clinica-${visitName.replace(/\s+/g, '-')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error: any) {
+      console.error('Error al generar PDF:', error);
+      const errorMessage = error?.message || 'Error al generar la historia clínica. Por favor intenta nuevamente.';
+      alert(errorMessage);
+    } finally {
+      setGeneratingPdf(false);
+    }
   };
 
   const hasBlockingErrors = validationErrors.some(e => e.rule.severity === 'error');
@@ -1802,6 +1869,15 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                 disabled={!validatedFormData}
               >
                 Ver Objeto
+              </Button>
+              <Button
+                onClick={handleGeneratePdf}
+                variant="contained"
+                color="secondary"
+                startIcon={generatingPdf ? <CircularProgress size={16} color="inherit" /> : <PdfIcon />}
+                disabled={!validatedFormData || generatingPdf || !protocolId || !visitId}
+              >
+                {generatingPdf ? 'Generando PDF...' : 'Generar Historia Clínica'}
               </Button>
               <Button
                 onClick={handleSubmit}

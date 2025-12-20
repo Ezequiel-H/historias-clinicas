@@ -625,6 +625,8 @@ export const VisitConfigPage: React.FC = () => {
         onClose={() => setPreviewOpen(false)}
         visitName={visit?.name || 'Vista'}
         activities={activities}
+        protocolId={protocolId}
+        visitId={visitId}
       />
 
       {/* Dialog para importar plantilla */}

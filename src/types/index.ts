@@ -90,6 +90,9 @@ export interface Activity {
   // Ayuda/instrucciones para el médico
   helpText?: string;
   
+  // Descripción para la IA sobre qué se hizo en esta actividad durante la visita
+  aiDescription?: string;
+  
   // Reglas de validación
   validationRules?: ActivityRule[];
   
