@@ -1018,8 +1018,49 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             activityObj.measurementUnit = activity.measurementUnit;
           }
 
-          // Incluir fecha y hora si están configuradas
-          if (activity.requireDate || activity.requireTime) {
+          // Manejar campos datetime
+          if (activity.fieldType === 'datetime') {
+            const includeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : true;
+            const includeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : false;
+            
+            if (activity.allowMultiple) {
+              const measurements: any[] = [];
+              const repeatCount = activity.repeatCount || 3;
+              
+              for (let i = 0; i < repeatCount; i++) {
+                const measurementValue = Array.isArray(formattedValue) ? formattedValue[i] : undefined;
+                const measurementDate = formValues[`${activity.id}_date_${i}`];
+                const measurementTime = formValues[`${activity.id}_time_${i}`];
+                
+                if (measurementValue !== undefined || (includeDate && measurementDate) || (includeTime && measurementTime)) {
+                  const measurement: any = {};
+                  if (measurementValue !== undefined) {
+                    measurement.value = measurementValue;
+                  }
+                  if (includeDate && measurementDate) {
+                    measurement.date = measurementDate;
+                  }
+                  if (includeTime && measurementTime) {
+                    measurement.time = normalizeTime(measurementTime);
+                  }
+                  measurements.push(measurement);
+                }
+              }
+              if (measurements.length > 0) {
+                activityObj.measurements = measurements;
+              }
+            } else {
+              activityObj.value = formattedValue;
+              const activityDate = formValues[`${activity.id}_date`];
+              const activityTime = formValues[`${activity.id}_time`];
+              if (includeDate && activityDate) {
+                activityObj.date = activityDate;
+              }
+              if (includeTime && activityTime) {
+                activityObj.time = normalizeTime(activityTime);
+              }
+            }
+          } else if (activity.requireDate || activity.requireTime) {
             if (activity.allowMultiple) {
               // Para campos repetibles con fecha/hora, usar measurements
               const measurements: any[] = [];

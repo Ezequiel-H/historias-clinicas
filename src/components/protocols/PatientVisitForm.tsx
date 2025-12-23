@@ -13,13 +13,19 @@ import {
   Alert,
   Chip,
   FormGroup,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Tooltip,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
   Send as SendIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
-  CheckCircle as CheckCircleIcon,
+  Add as AddIcon,
 } from '@mui/icons-material';
 import type { Visit, Activity, ActivityRule } from '../../types';
 
@@ -56,6 +62,10 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
+  const [activityDescriptions, setActivityDescriptions] = useState<Record<string, string>>({});
+  const [descriptionDialogOpen, setDescriptionDialogOpen] = useState(false);
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [descriptionText, setDescriptionText] = useState('');
 
   // Función helper para normalizar tiempo a formato HH:MM
   const normalizeTime = (timeValue: string): string => {
@@ -233,6 +243,30 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
     if (showValidation) {
       revalidateForm(newFormValues);
     }
+  };
+
+  const handleOpenDescriptionDialog = (activityId: string) => {
+    const activity = activities.find(a => a.id === activityId);
+    const currentDescription = activityDescriptions[activityId] || activity?.description || '';
+    setEditingActivityId(activityId);
+    setDescriptionText(currentDescription);
+    setDescriptionDialogOpen(true);
+  };
+
+  const handleCloseDescriptionDialog = () => {
+    setDescriptionDialogOpen(false);
+    setEditingActivityId(null);
+    setDescriptionText('');
+  };
+
+  const handleSaveDescription = () => {
+    if (editingActivityId) {
+      setActivityDescriptions(prev => ({
+        ...prev,
+        [editingActivityId]: descriptionText,
+      }));
+    }
+    handleCloseDescriptionDialog();
   };
 
   // Construir el array de funciones de validación para una actividad
@@ -879,19 +913,62 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
           
           const formattedValue = formatNumericValue(rawValue, activity);
           
+          const editedDescription = activityDescriptions[activity.id] || activity.description;
           const activityObj: any = {
             id: activity.id,
             name: activity.name,
             fieldType: activity.fieldType,
             helpText: activity.helpText,
-            description: activity.description,
+            description: editedDescription || activity.description,
           };
 
           if (activity.measurementUnit) {
             activityObj.measurementUnit = activity.measurementUnit;
           }
 
-          if (activity.requireDate || activity.requireTime) {
+          // Manejar campos datetime
+          if (activity.fieldType === 'datetime') {
+            const includeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : true;
+            const includeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : false;
+            
+            if (activity.allowMultiple) {
+              const measurements: any[] = [];
+              const repeatCount = activity.repeatCount || 3;
+              
+              for (let i = 0; i < repeatCount; i++) {
+                const measurementValue = Array.isArray(formattedValue) ? formattedValue[i] : undefined;
+                const measurementDate = formValues[`${activity.id}_date_${i}`];
+                const measurementTime = formValues[`${activity.id}_time_${i}`];
+                
+                if (measurementValue !== undefined || (includeDate && measurementDate) || (includeTime && measurementTime)) {
+                  const measurement: any = {};
+                  if (measurementValue !== undefined) {
+                    measurement.value = measurementValue;
+                  }
+                  if (includeDate && measurementDate) {
+                    measurement.date = measurementDate;
+                  }
+                  if (includeTime && measurementTime) {
+                    measurement.time = normalizeTime(measurementTime);
+                  }
+                  measurements.push(measurement);
+                }
+              }
+              if (measurements.length > 0) {
+                activityObj.measurements = measurements;
+              }
+            } else {
+              activityObj.value = formattedValue;
+              const activityDate = formValues[`${activity.id}_date`];
+              const activityTime = formValues[`${activity.id}_time`];
+              if (includeDate && activityDate) {
+                activityObj.date = activityDate;
+              }
+              if (includeTime && activityTime) {
+                activityObj.time = normalizeTime(activityTime);
+              }
+            }
+          } else if (activity.requireDate || activity.requireTime) {
             if (activity.allowMultiple) {
               const measurements: any[] = [];
               const repeatCount = activity.repeatCount || 3;
@@ -970,9 +1047,41 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
       const fieldValue = index !== undefined ? (Array.isArray(value) ? value[index] : '') : value;
       const fieldId = index !== undefined ? `${activity.id}-${index}` : activity.id;
 
+      // Función helper para envolver el campo con el botón de aclaración
+      const wrapWithDescriptionButton = (fieldElement: React.ReactNode) => {
+        // Solo mostrar el botón en el primer campo (no en campos repetibles individuales)
+        if (index !== undefined) {
+          return fieldElement;
+        }
+        
+        const hasDescription = activityDescriptions[activity.id] || activity.description;
+        
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+            <Box sx={{ flex: 1 }}>
+              {fieldElement}
+            </Box>
+            <Tooltip title={hasDescription ? "Editar aclaración para IA" : "Agregar aclaración para IA"}>
+              <IconButton
+                size="small"
+                onClick={() => handleOpenDescriptionDialog(activity.id)}
+                color={hasDescription ? "primary" : "default"}
+                sx={{ 
+                  mt: 1,
+                  border: hasDescription ? '1px solid' : '1px dashed',
+                  borderColor: hasDescription ? 'primary.main' : 'grey.400',
+                }}
+              >
+                <AddIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        );
+      };
+
       switch (activity.fieldType) {
         case 'text_short':
-          return (
+          return wrapWithDescriptionButton(
             <TextField
               fullWidth
               value={fieldValue || ''}
@@ -984,7 +1093,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
           );
 
         case 'text_long':
-          return (
+          return wrapWithDescriptionButton(
             <TextField
               fullWidth
               multiline
@@ -998,7 +1107,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
           );
 
         case 'number_simple':
-          return (
+          return wrapWithDescriptionButton(
             <Box>
               <TextField
                 type="number"
@@ -1032,7 +1141,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             handleChange(activity.id, newCompoundValue, index);
           };
           
-          return (
+          return wrapWithDescriptionButton(
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
               {fields.length > 0 ? (
                 fields.map((field) => (
@@ -1074,7 +1183,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             ? showValidation && activity.required && (!fieldValue || fieldValue.length === 0)
             : showValidation && activity.required && !fieldValue;
           
-          return (
+          return wrapWithDescriptionButton(
             <FormControl component="fieldset" error={hasError}>
               {isMultiple ? (
                 <FormGroup>
@@ -1122,7 +1231,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
         }
 
         case 'boolean':
-          return (
+          return wrapWithDescriptionButton(
             <FormControlLabel
               control={
                 <Checkbox
@@ -1148,7 +1257,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
           const dateValue = formValues[dateKey] || '';
           const timeValue = formValues[timeKey] || '';
           
-          return (
+          return wrapWithDescriptionButton(
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               {includeDate && (
                 <TextField
@@ -1200,7 +1309,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
           );
 
         case 'file':
-          return (
+          return wrapWithDescriptionButton(
             <Box>
               <input
                 type="file"
@@ -1242,7 +1351,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             displayValue = '—';
           }
           
-          return (
+          return wrapWithDescriptionButton(
             <Box>
               <TextField
                 type="text"
@@ -1620,6 +1729,45 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
           </Button>
         </Box>
       </Box>
+
+      {/* Diálogo para editar aclaración/descripción */}
+      <Dialog
+        open={descriptionDialogOpen}
+        onClose={handleCloseDescriptionDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Aclaración para IA
+          {editingActivityId && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {activities.find(a => a.id === editingActivityId)?.name}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Aclaración"
+            fullWidth
+            multiline
+            rows={4}
+            value={descriptionText}
+            onChange={(e) => setDescriptionText(e.target.value)}
+            placeholder="Ingrese una aclaración o descripción adicional para ayudar a la IA a entender mejor este campo..."
+            helperText="Esta aclaración se guardará en el campo description y ayudará a la IA a procesar mejor los datos."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDescriptionDialog}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSaveDescription} variant="contained">
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
