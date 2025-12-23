@@ -39,8 +39,22 @@ export const LoginPage: React.FC = () => {
       } else {
         navigate('/dashboard');
       }
-    } catch (err) {
-      setError('Credenciales inválidas. Por favor, intente nuevamente.');
+    } catch (err: any) {
+      // Extraer el mensaje de error del backend si está disponible
+      let errorMessage = 'Error al iniciar sesión. Por favor, intente nuevamente.';
+      
+      if (err?.response?.data?.error) {
+        // Si el backend devuelve un mensaje específico, usarlo
+        errorMessage = err.response.data.error;
+      } else if (err?.response?.status === 401) {
+        // Si es un error 401, mostrar mensaje específico sobre credenciales
+        errorMessage = 'Usuario o contraseña incorrectos. Por favor, verifique sus credenciales e intente nuevamente.';
+      } else if (err?.message) {
+        // Si hay un mensaje de error genérico, usarlo
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
