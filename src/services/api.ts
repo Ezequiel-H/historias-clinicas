@@ -33,8 +33,12 @@ class ApiService {
       (error) => {
         if (error.response?.status === 401) {
           // Token expirado o inválido
-          localStorage.removeItem('authToken');
-          window.location.href = '/login';
+          // Solo redirigir si no estamos en la página de login (para permitir que el componente maneje el error)
+          const isLoginPage = window.location.pathname === '/login' || window.location.pathname === '/signup';
+          if (!isLoginPage) {
+            localStorage.removeItem('authToken');
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(error);
       }

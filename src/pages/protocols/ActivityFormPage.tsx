@@ -50,8 +50,9 @@ import {
   CheckCircle as CheckCircleIcon,
   Code as CodeIcon,
   Link as LinkIcon,
+  Medication as MedicationIcon,
 } from '@mui/icons-material';
-import type { FieldType, SelectOption, ActivityRule } from '../../types';
+import type { FieldType, SelectOption, ActivityRule, MedicationTrackingConfig } from '../../types';
 import protocolService from '../../services/protocolService';
 
 const FIELD_TYPES = [
@@ -118,6 +119,13 @@ const FIELD_TYPES = [
     icon: <CodeIcon />,
     color: '#d32f2f',
   },
+  {
+    value: 'medication_tracking' as FieldType,
+    label: 'Seguimiento de Medicación',
+    description: 'Registro y cálculo de adherencia al tratamiento (pill count)',
+    icon: <MedicationIcon />,
+    color: '#ed6c02',
+  },
 ];
 
 export const ActivityFormPage: React.FC = () => {
@@ -162,6 +170,15 @@ export const ActivityFormPage: React.FC = () => {
   });
   const [isConditionalEnabled, setIsConditionalEnabled] = useState(false);
   const [compoundFields, setCompoundFields] = useState<Array<{name: string, label: string, unit?: string}>>([]);
+  const [medicationConfig, setMedicationConfig] = useState<Partial<MedicationTrackingConfig>>({
+    medicationName: '',
+    dosageUnit: 'comprimidos',
+    quantityPerDose: 1,
+    frequencyType: 'once_daily',
+    customHoursInterval: undefined,
+    shouldConsumeOnDeliveryDay: false,
+    shouldTakeOnVisitDay: false,
+  });
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
@@ -309,6 +326,19 @@ export const ActivityFormPage: React.FC = () => {
           helpText: activity.helpText || '',
           calculationFormula: activity.calculationFormula || '',
         });
+        if (activity.medicationTrackingConfig) {
+          setMedicationConfig(activity.medicationTrackingConfig);
+        } else {
+          setMedicationConfig({
+            medicationName: '',
+            dosageUnit: 'comprimidos',
+            quantityPerDose: 1,
+            frequencyType: 'once_daily',
+            customHoursInterval: undefined,
+            shouldConsumeOnDeliveryDay: false,
+            shouldTakeOnVisitDay: false,
+          });
+        }
         
         // Cargar opciones si existen
         if (activity.options && activity.options.length > 0) {
@@ -388,6 +418,24 @@ export const ActivityFormPage: React.FC = () => {
           label: label || value,
         };
       });
+  };
+
+  // Calcular dosis diaria esperada según la frecuencia
+  const calculateExpectedDailyDose = (config: Partial<MedicationTrackingConfig>): number | undefined => {
+    if (!config.quantityPerDose || !config.frequencyType) return undefined;
+    
+    const quantity = config.quantityPerDose;
+    
+    switch (config.frequencyType) {
+      case 'once_daily':
+        return quantity;
+      case 'twice_daily':
+        return quantity * 2;
+      case 'three_daily':
+        return quantity * 3;
+      default:
+        return undefined;
+    }
   };
 
   const buildActivityData = () => {
@@ -499,6 +547,21 @@ export const ActivityFormPage: React.FC = () => {
     // Siempre enviar calculationFormula, incluso si está vacío, para que se actualice en la DB
     if (formData.fieldType === 'calculated') {
       activityData.calculationFormula = formData.calculationFormula?.trim() || '';
+    }
+
+    // Configurar medication tracking si es el tipo correcto
+    if (formData.fieldType === 'medication_tracking') {
+      const expectedDailyDose = calculateExpectedDailyDose(medicationConfig);
+      activityData.medicationTrackingConfig = {
+        medicationName: medicationConfig.medicationName || '',
+        dosageUnit: medicationConfig.dosageUnit || 'comprimidos',
+        quantityPerDose: medicationConfig.quantityPerDose || 1,
+        frequencyType: medicationConfig.frequencyType || 'once_daily',
+        customHoursInterval: medicationConfig.customHoursInterval,
+        expectedDailyDose,
+        shouldConsumeOnDeliveryDay: medicationConfig.shouldConsumeOnDeliveryDay || false,
+        shouldTakeOnVisitDay: medicationConfig.shouldTakeOnVisitDay || false,
+      };
     }
 
     // Agregar configuración condicional si está habilitada y configurada (para cualquier tipo de campo)
@@ -1179,6 +1242,66 @@ export const ActivityFormPage: React.FC = () => {
                   </Box>
                 </Box>
               )}
+            </Box>
+          )}
+
+          {/* Configuración de medication tracking */}
+          {formData.fieldType === 'medication_tracking' && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Configuración de Seguimiento de Medicación
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+              
+              <TextField
+                label="Dosis (cantidad por toma)"
+                type="number"
+                value={medicationConfig.quantityPerDose || 1}
+                onChange={(e) => setMedicationConfig({ ...medicationConfig, quantityPerDose: parseFloat(e.target.value) || 1 })}
+                inputProps={{ min: 0.1, step: 0.1 }}
+                fullWidth
+                sx={{ mb: 2 }}
+                helperText="Cantidad de medicamento que se toma en cada dosis"
+              />
+
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Frecuencia</InputLabel>
+                <Select
+                  value={medicationConfig.frequencyType || 'once_daily'}
+                  label="Frecuencia"
+                  onChange={(e) => setMedicationConfig({ ...medicationConfig, frequencyType: e.target.value as MedicationTrackingConfig['frequencyType'] })}
+                >
+                  <MenuItem value="once_daily">Una vez al día</MenuItem>
+                  <MenuItem value="twice_daily">Dos veces al día</MenuItem>
+                  <MenuItem value="three_daily">Tres veces al día</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Reglas del Protocolo
+              </Typography>
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={medicationConfig.shouldConsumeOnDeliveryDay || false}
+                    onChange={(e) => setMedicationConfig({ ...medicationConfig, shouldConsumeOnDeliveryDay: e.target.checked })}
+                  />
+                }
+                label="Debe tomar la medicación el día de la visita anterior"
+                sx={{ mb: 1 }}
+              />
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={medicationConfig.shouldTakeOnVisitDay || false}
+                    onChange={(e) => setMedicationConfig({ ...medicationConfig, shouldTakeOnVisitDay: e.target.checked })}
+                  />
+                }
+                label="Debe tomar la medicación el día de esta visita"
+              />
             </Box>
           )}
 

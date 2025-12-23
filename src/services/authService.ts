@@ -52,6 +52,21 @@ class AuthService {
   saveToken(token: string): void {
     localStorage.setItem('authToken', token);
   }
+
+  // Obtener todos los usuarios (solo admins)
+  async getAllUsers(): Promise<ApiResponse<User[]>> {
+    return apiService.get<ApiResponse<User[]>>('/auth/users');
+  }
+
+  // Actualizar estado isActive de un usuario (solo admins)
+  async updateUserStatus(userId: string, isActive: boolean): Promise<ApiResponse<User>> {
+    return apiService.patch<ApiResponse<User>>(`/auth/users/${userId}`, { isActive });
+  }
+
+  // Actualizar foto de firma de un usuario (solo admins)
+  async updateUserSignaturePhoto(userId: string, sealSignaturePhoto: string): Promise<ApiResponse<User>> {
+    return apiService.patch<ApiResponse<User>>(`/auth/users/${userId}/signature-photo`, { sealSignaturePhoto });
+  }
 }
 
 export const authService = new AuthService();

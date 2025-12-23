@@ -18,6 +18,7 @@ import { PatientVisitFormPage } from './pages/protocols/PatientVisitFormPage';
 import { TemplateListPage } from './pages/templates/TemplateListPage';
 import { TemplateConfigPage } from './pages/templates/TemplateConfigPage';
 import { TemplateActivityFormPage } from './pages/templates/TemplateActivityFormPage';
+import { UsersPage } from './pages/users/UsersPage';
 
 // Tema personalizado
 const theme = createTheme({
@@ -126,8 +127,8 @@ function App() {
               <Route path="templates/:templateId/edit" element={<TemplateConfigPage />} />
               <Route path="templates/:templateId/activities/:activityId" element={<TemplateActivityFormPage />} />
 
-              {/* Otras rutas pendientes de implementación */}
-              <Route path="users" element={<div>Usuarios - En desarrollo</div>} />
+              {/* Usuarios */}
+              <Route path="users" element={<UsersPage />} />
             </Route>
 
             {/* Ruta 404 */}

@@ -50,6 +50,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Code as CodeIcon,
   Link as LinkIcon,
+  Medication as MedicationIcon,
 } from '@mui/icons-material';
 import type { FieldType, SelectOption, ActivityRule } from '../../types';
 import templateService from '../../services/templateService';
@@ -117,6 +118,13 @@ const FIELD_TYPES = [
     description: 'Se calcula automáticamente basado en otros campos',
     icon: <CodeIcon />,
     color: '#d32f2f',
+  },
+  {
+    value: 'medication_tracking' as FieldType,
+    label: 'Seguimiento de Medicación',
+    description: 'Registro y cálculo de adherencia al tratamiento (pill count)',
+    icon: <MedicationIcon />,
+    color: '#ed6c02',
   },
 ];
 

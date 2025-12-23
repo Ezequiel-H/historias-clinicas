@@ -32,7 +32,8 @@ export type FieldType =
   | 'datetime'             // Fecha y/o hora (configurable)
   | 'file'                 // Archivo adjunto
   | 'conditional'         // Campo condicional
-  | 'calculated';         // Campo calculado (se calcula automáticamente basado en otros campos)
+  | 'calculated'          // Campo calculado (se calcula automáticamente basado en otros campos)
+  | 'medication_tracking'; // Seguimiento de medicación
 
 // Configuración de un campo compuesto
 export interface CompoundFieldConfig {
@@ -95,6 +96,24 @@ export interface Activity {
   
   // Campo calculado (solo si fieldType === 'calculated')
   calculationFormula?: string; // Ej: "peso / altura" - fórmula para calcular el valor automáticamente
+  
+  // Configuración de seguimiento de medicación (solo si fieldType === 'medication_tracking')
+  medicationTrackingConfig?: MedicationTrackingConfig;
+  
+  // Si true, este campo representa la fecha de la visita (solo si fieldType === 'datetime' y datetimeIncludeDate === true)
+  isVisitDate?: boolean;
+}
+
+// Configuración de seguimiento de medicación
+export interface MedicationTrackingConfig {
+  medicationName: string;
+  dosageUnit: 'comprimidos' | 'cápsulas' | 'tabletas' | 'ml' | 'gotas' | 'sobres' | 'parches' | 'ampollas' | 'unidades';
+  quantityPerDose: number; // Cantidad por toma
+  frequencyType: 'once_daily' | 'twice_daily' | 'three_daily' | 'every_x_hours' | 'once_weekly';
+  customHoursInterval?: number; // Solo si frequencyType === 'every_x_hours'
+  expectedDailyDose?: number; // Dosis diaria esperada (calculada automáticamente o ingresada manualmente)
+  shouldConsumeOnDeliveryDay?: boolean; // Si el paciente debería haber tomado la medicación el día de la visita anterior (día de entrega)
+  shouldTakeOnVisitDay?: boolean; // Si el paciente debería tomar la medicación el día de esta visita (día de hoy)
 }
 
 // Regla de validación para actividades
