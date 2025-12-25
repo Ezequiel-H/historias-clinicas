@@ -32,6 +32,7 @@ import {
   DragIndicator as DragIcon,
 } from '@mui/icons-material';
 import type { Activity, FieldType, SelectOption, Visit, MedicationTrackingConfig } from '../../types';
+import { preventNumberInputScroll } from './shared';
 
 interface ActivityEditorProps {
   visit: Visit;
@@ -443,6 +444,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
                   type="number"
                   value={medicationConfig.quantityPerDose || 1}
                   onChange={(e) => setMedicationConfig({ ...medicationConfig, quantityPerDose: parseFloat(e.target.value) || 1 })}
+                  onWheel={preventNumberInputScroll}
                   inputProps={{ min: 0.1, step: 0.1 }}
                   fullWidth
                   sx={{ mb: 2 }}

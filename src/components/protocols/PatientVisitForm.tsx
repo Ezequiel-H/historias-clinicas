@@ -5,14 +5,8 @@ import {
   Typography,
   Button,
   TextField,
-  FormControl,
-  FormControlLabel,
-  RadioGroup,
-  Radio,
-  Checkbox,
   Alert,
   Chip,
-  FormGroup,
   IconButton,
   Dialog,
   DialogTitle,
@@ -26,9 +20,16 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   Add as AddIcon,
-  Medication as MedicationIcon,
 } from '@mui/icons-material';
-import type { Visit, Activity, ActivityRule, MedicationTrackingConfig } from '../../types';
+import type { Visit, Activity, ActivityRule } from '../../types';
+import {
+  normalizeTime,
+  isValidTime,
+  addMinutesToTime,
+  ActivityFieldRenderer,
+  calculateMedicationAdherence,
+  detectAdherenceProblems,
+} from './shared';
 
 interface PatientVisitFormProps {
   visit: Visit;
@@ -67,48 +68,12 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
   const [descriptionDialogOpen, setDescriptionDialogOpen] = useState(false);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [descriptionText, setDescriptionText] = useState('');
-
-  // Función helper para normalizar tiempo a formato HH:MM
-  const normalizeTime = (timeValue: string): string => {
-    if (!timeValue) return '';
-    if (timeValue.length >= 5) {
-      return timeValue.substring(0, 5);
-    }
-    return timeValue;
-  };
-
-  // Función para formatear tiempo mientras se escribe (HH:MM)
-  const formatTimeInput = (value: string): string => {
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length === 0) return '';
-    if (numbers.length <= 2) return numbers;
-    if (numbers.length <= 4) return `${numbers.substring(0, 2)}:${numbers.substring(2)}`;
-    return `${numbers.substring(0, 2)}:${numbers.substring(2, 4)}`;
-  };
-
-  // Función para validar formato de tiempo HH:MM
-  const isValidTime = (time: string): boolean => {
-    if (!time || time.length !== 5) return false;
-    const [hours, minutes] = time.split(':');
-    const h = parseInt(hours, 10);
-    const m = parseInt(minutes, 10);
-    return !isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59;
-  };
-
-  // Función para calcular la hora siguiente sumando minutos
-  const addMinutesToTime = (time: string, minutesToAdd: number): string => {
-    if (!time || time.length !== 5) return '';
-    const [hours, minutes] = time.split(':');
-    const h = parseInt(hours, 10);
-    const m = parseInt(minutes, 10);
-    if (isNaN(h) || isNaN(m)) return '';
-    
-    const totalMinutes = h * 60 + m + minutesToAdd;
-    const newHours = Math.floor(totalMinutes / 60) % 24;
-    const newMinutes = totalMinutes % 60;
-    
-    return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
-  };
+  
+  // Estado para manejar errores de adherencia y decisiones del médico
+  const [medicationErrors, setMedicationErrors] = useState<Record<string, Record<string, {
+    includeInHistory: boolean;
+    comment: string;
+  }>>>({});
 
   // Función helper para verificar si debe mostrarse error en fecha/hora
   const shouldShowDateTimeError = (activity: Activity, index?: number): { date: boolean, time: boolean } => {
@@ -268,67 +233,6 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
       }));
     }
     handleCloseDescriptionDialog();
-  };
-
-  // Función helper para parsear fecha local (formato YYYY-MM-DD)
-  const parseLocalDate = (dateString: string): Date => {
-    const [year, month, day] = dateString.split('-').map(Number);
-    return new Date(year, month - 1, day);
-  };
-
-  // Función helper para calcular adherencia a medicación
-  const calculateMedicationAdherence = (
-    lastVisitDate: string,
-    unitsDelivered: string,
-    unitsReturned: string,
-    tookMedicationToday: boolean,
-    config: MedicationTrackingConfig
-  ) => {
-    if (!lastVisitDate || !unitsDelivered || unitsReturned === '' || !config.expectedDailyDose) {
-      return null;
-    }
-
-    const visitDate = new Date(); // Fecha actual (día de la visita)
-    const lastVisit = parseLocalDate(lastVisitDate);
-
-    const totalDaysDifference = Math.floor((visitDate.getTime() - lastVisit.getTime()) / (1000 * 60 * 60 * 24));
-    const daysElapsed = totalDaysDifference > 0 ? totalDaysDifference - 1 : 0; 
-
-    // Calculate expected consumption days
-    let expectedConsumptionDays = daysElapsed;
-    if (config.shouldConsumeOnDeliveryDay) expectedConsumptionDays += 1;
-    if (config.shouldTakeOnVisitDay) expectedConsumptionDays += 1;
-
-    // Total expected dose
-    const expectedTotalDose = expectedConsumptionDays * config.expectedDailyDose;
-
-    // Actual consumption
-    const delivered = parseFloat(unitsDelivered) || 0;
-    const returned = parseFloat(unitsReturned) || 0;
-    const realConsumption = delivered - returned;
-
-    // Adjusted consumption
-    let adjustedConsumption = realConsumption;
-    
-    // Si el paciente tomó la medicación cuando NO debía, restar esa dosis del consumo
-    if (!config.shouldTakeOnVisitDay && tookMedicationToday) {
-      adjustedConsumption -= config.expectedDailyDose;
-    }
-
-    // Adherence percentage - SIEMPRE usar adjustedConsumption
-    if (expectedTotalDose <= 0) return null;
-    const adherencePercentage = (adjustedConsumption / expectedTotalDose) * 100;
-
-    return {
-      daysElapsed,
-      expectedConsumptionDays,
-      expectedTotalDose,
-      realConsumption,
-      adjustedConsumption,
-      adherencePercentage,
-      delivered,
-      returned,
-    };
   };
 
   // Construir el array de funciones de validación para una actividad
@@ -1088,7 +992,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
               }
             }
           } else if (activity.fieldType === 'medication_tracking') {
-            // Procesar medication_tracking: agregar adherencia calculada
+            // Procesar medication_tracking: agregar adherencia y errores si el médico decidió incluirlos
             const medValue = typeof formattedValue === 'object' && formattedValue !== null ? formattedValue : {};
             const lastVisitDate = medValue.lastVisitDate || '';
             const unitsDelivered = medValue.unitsDelivered || '';
@@ -1123,6 +1027,37 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
                       : null,
                   },
                 };
+                
+                // Agregar errores que el médico decidió incluir en la historia clínica
+                const detectedProblems = detectAdherenceProblems(
+                  activity.medicationTrackingConfig,
+                  tookMedicationToday,
+                  adherence
+                );
+                
+                const activityMedErrors = medicationErrors[activity.id] || {};
+                const errorsToInclude: Array<{
+                  type: string;
+                  message: string;
+                  severity: 'error' | 'warning';
+                  comment?: string;
+                }> = [];
+                
+                for (const problem of detectedProblems) {
+                  const errorState = activityMedErrors[problem.id];
+                  if (errorState?.includeInHistory) {
+                    errorsToInclude.push({
+                      type: problem.id,
+                      message: problem.message,
+                      severity: problem.severity,
+                      comment: errorState.comment || undefined,
+                    });
+                  }
+                }
+
+                if (errorsToInclude.length > 0) {
+                  activityObj.medicationTracking.deviations = errorsToInclude;
+                }
               }
             }
           } else {
@@ -1137,891 +1072,6 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
       
       onComplete(formData);
     }
-  };
-
-  const renderField = (activity: Activity) => {
-    const value = formValues[activity.id];
-    const activityErrors = validationErrors.filter(e => e.activityId === activity.id);
-
-    const renderSingleField = (index?: number) => {
-      const fieldValue = index !== undefined ? (Array.isArray(value) ? value[index] : '') : value;
-      const fieldId = index !== undefined ? `${activity.id}-${index}` : activity.id;
-
-      // Función helper para envolver el campo con el botón de aclaración
-      const wrapWithDescriptionButton = (fieldElement: React.ReactNode) => {
-        // Solo mostrar el botón en el primer campo (no en campos repetibles individuales)
-        if (index !== undefined) {
-          return fieldElement;
-        }
-        
-        const hasDescription = activityDescriptions[activity.id] || activity.description;
-        
-        return (
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-            <Box sx={{ flex: 1 }}>
-              {fieldElement}
-            </Box>
-            <Tooltip title={hasDescription ? "Editar aclaración para IA" : "Agregar aclaración para IA"}>
-              <IconButton
-                size="small"
-                onClick={() => handleOpenDescriptionDialog(activity.id)}
-                color={hasDescription ? "primary" : "default"}
-                sx={{ 
-                  mt: 1,
-                  border: hasDescription ? '1px solid' : '1px dashed',
-                  borderColor: hasDescription ? 'primary.main' : 'grey.400',
-                }}
-              >
-                <AddIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        );
-      };
-
-      switch (activity.fieldType) {
-        case 'text_short':
-          return wrapWithDescriptionButton(
-            <TextField
-              fullWidth
-              value={fieldValue || ''}
-              onChange={(e) => handleChange(activity.id, e.target.value, index)}
-              placeholder="Ingrese texto..."
-              error={showValidation && activity.required && !fieldValue}
-              helperText={showValidation && activity.required && !fieldValue ? 'Campo requerido' : ''}
-            />
-          );
-
-        case 'text_long':
-          return wrapWithDescriptionButton(
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              value={fieldValue || ''}
-              onChange={(e) => handleChange(activity.id, e.target.value, index)}
-              placeholder="Ingrese observaciones..."
-              error={showValidation && activity.required && !fieldValue}
-              helperText={showValidation && activity.required && !fieldValue ? 'Campo requerido' : ''}
-            />
-          );
-
-        case 'number_simple':
-          return wrapWithDescriptionButton(
-            <Box>
-              <TextField
-                type="number"
-                value={fieldValue || ''}
-                onChange={(e) => handleChange(activity.id, e.target.value, index)}
-                placeholder="0"
-                error={showValidation && activity.required && !fieldValue}
-                helperText={showValidation && activity.required && !fieldValue ? 'Campo requerido' : ''}
-                InputProps={{
-                  endAdornment: activity.measurementUnit ? (
-                    <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                      {activity.measurementUnit}
-                    </Typography>
-                  ) : null,
-                }}
-                sx={{ width: 250 }}
-              />
-            </Box>
-          );
-
-        case 'number_compound': {
-          const compoundValue = (typeof fieldValue === 'object' && fieldValue !== null && !Array.isArray(fieldValue))
-            ? fieldValue
-            : {};
-          
-          const compoundConfig = activity.compoundConfig;
-          const fields = compoundConfig?.fields || [];
-          
-          const handleCompoundChange = (fieldName: string, value: string) => {
-            const newCompoundValue = { ...compoundValue, [fieldName]: value };
-            handleChange(activity.id, newCompoundValue, index);
-          };
-          
-          return wrapWithDescriptionButton(
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-              {fields.length > 0 ? (
-                fields.map((field) => (
-                  <TextField
-                    key={field.name}
-                    type="number"
-                    label={field.label}
-                    value={compoundValue[field.name] || ''}
-                    onChange={(e) => handleCompoundChange(field.name, e.target.value)}
-                    placeholder="0"
-                    error={showValidation && activity.required && (!compoundValue[field.name] || compoundValue[field.name] === '')}
-                    helperText={
-                      showValidation && activity.required && (!compoundValue[field.name] || compoundValue[field.name] === '')
-                        ? 'Campo requerido'
-                        : ''
-                    }
-                    InputProps={{
-                      endAdornment: field.unit ? (
-                        <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                          {field.unit}
-                        </Typography>
-                      ) : null,
-                    }}
-                    sx={{ minWidth: 200 }}
-                  />
-                ))
-              ) : (
-                <Alert severity="warning">
-                  No hay campos configurados para este número compuesto.
-                </Alert>
-              )}
-            </Box>
-          );
-        }
-
-        case 'select_single': {
-          const isMultiple = activity.selectMultiple === true;
-          const hasError = isMultiple
-            ? showValidation && activity.required && (!fieldValue || fieldValue.length === 0)
-            : showValidation && activity.required && !fieldValue;
-          
-          return wrapWithDescriptionButton(
-            <FormControl component="fieldset" error={hasError}>
-              {isMultiple ? (
-                <FormGroup>
-                  {activity.options?.map((option) => (
-                    <FormControlLabel
-                      key={option.value}
-                      control={
-                        <Checkbox
-                          checked={Array.isArray(fieldValue) && fieldValue.includes(option.value)}
-                          onChange={(e) => {
-                            const currentValues = Array.isArray(fieldValue) ? fieldValue : [];
-                            const newValues = e.target.checked
-                              ? [...currentValues, option.value]
-                              : currentValues.filter(v => v !== option.value);
-                            handleChange(activity.id, newValues, index);
-                          }}
-                        />
-                      }
-                      label={option.label}
-                    />
-                  ))}
-                </FormGroup>
-              ) : (
-                <RadioGroup
-                  value={fieldValue || ''}
-                  onChange={(e) => handleChange(activity.id, e.target.value, index)}
-                >
-                  {activity.options?.map((option) => (
-                    <FormControlLabel
-                      key={option.value}
-                      value={option.value}
-                      control={<Radio />}
-                      label={option.label}
-                    />
-                  ))}
-                </RadioGroup>
-              )}
-              {hasError && (
-                <Typography variant="caption" color="error">
-                  Campo requerido
-                </Typography>
-              )}
-            </FormControl>
-          );
-        }
-
-        case 'boolean':
-          return wrapWithDescriptionButton(
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={!!fieldValue}
-                  onChange={(e) => handleChange(activity.id, e.target.checked, index)}
-                />
-              }
-              label="Sí / Activado"
-            />
-          );
-
-        case 'datetime':
-          const isOldDate = (activity.fieldType as string) === 'date';
-          const isOldTime = (activity.fieldType as string) === 'time';
-          
-          const includeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : 
-                            (isOldDate || (activity.fieldType === 'datetime' && activity.datetimeIncludeDate !== false));
-          const includeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : 
-                            (isOldTime || (activity.fieldType === 'datetime' && activity.datetimeIncludeTime !== false));
-          
-          const dateKey = index !== undefined ? `${activity.id}_date_${index}` : `${activity.id}_date`;
-          const timeKey = index !== undefined ? `${activity.id}_time_${index}` : `${activity.id}_time`;
-          const dateValue = formValues[dateKey] || '';
-          const timeValue = formValues[timeKey] || '';
-          
-          return wrapWithDescriptionButton(
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              {includeDate && (
-                <TextField
-                  type="date"
-                  label="Fecha"
-                  value={dateValue}
-                  onChange={(e) => {
-                    handleChange(dateKey, e.target.value, undefined);
-                  }}
-                  InputLabelProps={{ shrink: true }}
-                  error={showValidation && activity.required && includeDate && !dateValue}
-                  helperText={showValidation && activity.required && includeDate && !dateValue ? 'Campo requerido' : ''}
-                  sx={{ minWidth: 200 }}
-                />
-              )}
-              {includeTime && (
-                <TextField
-                  type="text"
-                  label="Hora"
-                  placeholder="HH:MM"
-                  value={normalizeTime(timeValue)}
-                  onChange={(e) => {
-                    const formatted = formatTimeInput(e.target.value);
-                    handleChange(timeKey, formatted, undefined);
-                  }}
-                  onBlur={(e) => {
-                    const timeValueNormalized = normalizeTime(e.target.value);
-                    if (timeValueNormalized && !isValidTime(timeValueNormalized)) {
-                      handleChange(timeKey, '', undefined);
-                    } else {
-                      handleChange(timeKey, timeValueNormalized, undefined);
-                    }
-                  }}
-                  InputLabelProps={{ shrink: true }}
-                  inputProps={{ 
-                    maxLength: 5,
-                    pattern: '[0-9]{2}:[0-9]{2}'
-                  }}
-                  error={showValidation && activity.required && includeTime && !timeValue}
-                  helperText={
-                    showValidation && activity.required && includeTime && !timeValue 
-                      ? 'Campo requerido' 
-                      : 'Formato: HH:MM (ej: 14:30)'
-                  }
-                  sx={{ minWidth: 200 }}
-                />
-              )}
-            </Box>
-          );
-
-        case 'file':
-          return wrapWithDescriptionButton(
-            <Box>
-              <input
-                type="file"
-                id={fieldId}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  handleChange(activity.id, file?.name || '', index);
-                }}
-                style={{ display: 'none' }}
-              />
-              <label htmlFor={fieldId}>
-                <Button variant="outlined" component="span">
-                  Seleccionar archivo...
-                </Button>
-              </label>
-              {fieldValue && (
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  Archivo: {fieldValue}
-                </Typography>
-              )}
-              {showValidation && activity.required && !fieldValue && (
-                <Typography variant="caption" color="error" display="block">
-                  Campo requerido
-                </Typography>
-              )}
-            </Box>
-          );
-
-        case 'calculated':
-          const calculatedValue = activity.calculationFormula 
-            ? evaluateFormula(activity.calculationFormula, formValues)
-            : null;
-          
-          let displayValue = '';
-          if (calculatedValue !== null && !isNaN(calculatedValue)) {
-            const decimalPlaces = activity.decimalPlaces ?? 2;
-            displayValue = calculatedValue.toFixed(decimalPlaces);
-          } else {
-            displayValue = '—';
-          }
-          
-          return wrapWithDescriptionButton(
-            <Box>
-              <TextField
-                type="text"
-                value={displayValue}
-                InputProps={{
-                  readOnly: true,
-                  startAdornment: activity.measurementUnit ? (
-                    <Box component="span" sx={{ mr: 1, color: 'text.secondary' }}>
-                      {activity.measurementUnit}
-                    </Box>
-                  ) : null,
-                }}
-                fullWidth
-                label="Valor Calculado"
-                helperText={
-                  activity.calculationFormula
-                    ? `Calculado automáticamente: ${activity.calculationFormula}`
-                    : 'No hay fórmula configurada'
-                }
-                sx={{
-                  '& .MuiInputBase-input': {
-                    backgroundColor: 'action.hover',
-                    fontWeight: 'medium',
-                  },
-                }}
-              />
-            </Box>
-          );
-
-        case 'medication_tracking': {
-          const config = activity.medicationTrackingConfig;
-          if (!config) {
-            return wrapWithDescriptionButton(
-              <Alert severity="warning">
-                No hay configuración de medicación. Edite la actividad para configurarla.
-              </Alert>
-            );
-          }
-
-          // Obtener los valores del formulario
-          const medValue = typeof fieldValue === 'object' && fieldValue !== null ? fieldValue : {};
-          const lastVisitDate = medValue.lastVisitDate || '';
-          const unitsDelivered = medValue.unitsDelivered !== undefined && medValue.unitsDelivered !== '' 
-            ? parseFloat(medValue.unitsDelivered) 
-            : null;
-          
-          const handleMedChange = (field: string, value: any) => {
-            const newValue = { ...medValue, [field]: value };
-            handleChange(activity.id, newValue, index);
-          };
-          
-          // Obtener información de frecuencia
-          const getFrequencyDescription = () => {
-            const quantity = config.quantityPerDose || 1;
-            const unit = config.dosageUnit || 'comprimidos';
-            
-            switch (config.frequencyType) {
-              case 'once_daily':
-                return `${quantity} ${unit} una vez al día`;
-              case 'twice_daily':
-                return `${quantity} ${unit} dos veces al día`;
-              case 'three_daily':
-                return `${quantity} ${unit} tres veces al día`;
-              case 'every_x_hours':
-                return `${quantity} ${unit} cada ${config.customHoursInterval || '?'} horas`;
-              case 'once_weekly':
-                return `${quantity} ${unit} una vez por semana`;
-              default:
-                return `${quantity} ${unit}`;
-            }
-          };
-          
-          return wrapWithDescriptionButton(
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {/* Info del medicamento */}
-              <Alert severity="info" icon={<MedicationIcon />} sx={{ '& .MuiAlert-message': { width: '100%' } }}>
-                <Box>
-                  <Typography variant="subtitle2" fontWeight="bold">
-                    {config.medicationName || 'Medicamento'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Dosis prescrita: {getFrequencyDescription()}
-                  </Typography>
-                </Box>
-              </Alert>
-              
-              {/* Campos de entrada */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
-                <TextField
-                  type="date"
-                  label="Fecha de la última visita"
-                  value={lastVisitDate}
-                  onChange={(e) => handleMedChange('lastVisitDate', e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                  error={showValidation && activity.required && !lastVisitDate}
-                  helperText={showValidation && activity.required && !lastVisitDate ? 'Campo requerido' : 'Haz clic en el campo para seleccionar la fecha'}
-                  onClick={(e) => {
-                    const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement;
-                    if (input) {
-                      input.showPicker?.();
-                    }
-                  }}
-                  sx={{
-                    cursor: 'pointer',
-                    '& input[type="date"]': {
-                      cursor: 'pointer',
-                      '&::-webkit-calendar-picker-indicator': {
-                        cursor: 'pointer',
-                        opacity: 1,
-                      },
-                    },
-                    '& .MuiInputBase-root': {
-                      cursor: 'pointer',
-                    },
-                  }}
-                />
-
-                <TextField
-                  type="number"
-                  label={`${config.dosageUnit.charAt(0).toUpperCase() + config.dosageUnit.slice(1)} entregados`}
-                  value={medValue.unitsDelivered || ''}
-                  onChange={(e) => handleMedChange('unitsDelivered', e.target.value)}
-                  inputProps={{ min: 0 }}
-                  fullWidth
-                  error={showValidation && activity.required && !medValue.unitsDelivered}
-                  helperText="Cantidad entregada en la última visita"
-                />
-
-                <TextField
-                  type="number"
-                  label={`${config.dosageUnit.charAt(0).toUpperCase() + config.dosageUnit.slice(1)} devueltos hoy`}
-                  value={medValue.unitsReturned || ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === '') {
-                      handleMedChange('unitsReturned', '');
-                      return;
-                    }
-                    const numValue = parseFloat(value);
-                    if (!isNaN(numValue) && numValue >= 0) {
-                      if (unitsDelivered !== null && numValue > unitsDelivered) {
-                        handleMedChange('unitsReturned', unitsDelivered.toString());
-                      } else {
-                        handleMedChange('unitsReturned', value);
-                      }
-                    }
-                  }}
-                  inputProps={{ 
-                    min: 0,
-                    max: unitsDelivered !== null ? unitsDelivered : undefined
-                  }}
-                  fullWidth
-                  helperText={
-                    unitsDelivered !== null
-                      ? `Cantidad que devuelve el paciente (máximo: ${unitsDelivered} ${config.dosageUnit})`
-                      : 'Cantidad que devuelve el paciente'
-                  }
-                />
-              </Box>
-
-              {/* Estadísticas de adherencia */}
-              {(() => {
-                const unitsReturned = medValue.unitsReturned !== undefined && medValue.unitsReturned !== '' 
-                  ? medValue.unitsReturned 
-                  : '';
-                const tookMedicationToday = medValue.tookMedicationToday || false;
-                
-                const adherence = calculateMedicationAdherence(
-                  lastVisitDate,
-                  medValue.unitsDelivered || '',
-                  unitsReturned,
-                  tookMedicationToday,
-                  config
-                );
-                
-                if (!adherence) {
-                  return null;
-                }
-                
-                return (
-                  <>
-                    <Paper sx={{ p: 2, bgcolor: 'grey.50', mt: 2 }}>
-                      <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                        Estadísticas de Adherencia al Tratamiento
-                      </Typography>
-                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, mt: 1 }}>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Días naturales entre fechas:
-                          </Typography>
-                          <Typography variant="body1" fontWeight="bold">
-                            {adherence.daysElapsed} días
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            (sin contar día de entrega ni día de visita)
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Días de consumo esperado:
-                          </Typography>
-                          <Typography variant="body1" fontWeight="bold">
-                            {adherence.expectedConsumptionDays} días
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            (incluye días naturales + día entrega + día visita según protocolo)
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Dosis esperada total:
-                          </Typography>
-                          <Typography variant="body1" fontWeight="bold">
-                            {adherence.expectedTotalDose.toFixed(2)} {config.dosageUnit}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            (días de consumo × dosis diaria)
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Consumo real:
-                          </Typography>
-                          <Typography variant="body1" fontWeight="bold">
-                            {adherence.realConsumption.toFixed(2)} {config.dosageUnit}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            ({adherence.delivered} entregados - {adherence.returned} devueltos)
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Consumo ajustado:
-                          </Typography>
-                          <Typography variant="body1" fontWeight="bold">
-                            {adherence.adjustedConsumption.toFixed(2)} {config.dosageUnit}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {adherence.realConsumption !== adherence.adjustedConsumption
-                              ? `(ajustado: se restó la dosis del día por tomar cuando no debía)`
-                              : `(igual al consumo real: no hubo ajustes necesarios)`
-                            }
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Adherencia:
-                          </Typography>
-                          <Typography 
-                            variant="body1" 
-                            fontWeight="bold"
-                            sx={{
-                              color: adherence.adherencePercentage >= 80 
-                                ? 'success.main' 
-                                : adherence.adherencePercentage >= 50 
-                                ? 'warning.main' 
-                                : 'error.main'
-                            }}
-                          >
-                            {adherence.adherencePercentage.toFixed(1)}%
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </Paper>
-                    
-                    {/* Checkbox: ¿Tomó la medicación hoy? */}
-                    <Box sx={{ mt: 2 }}>
-                      <FormControl 
-                        error={config.shouldTakeOnVisitDay === true && !tookMedicationToday}
-                        sx={{ display: 'block' }}
-                      >
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={tookMedicationToday}
-                              onChange={(e) => handleMedChange('tookMedicationToday', e.target.checked)}
-                            />
-                          }
-                          label="¿El paciente tomó la medicación el día de hoy?"
-                        />
-                      </FormControl>
-                    </Box>
-                  </>
-                );
-              })()}
-            </Box>
-          );
-        }
-
-        default:
-          return (
-            <Typography variant="body2" color="text.secondary">
-              [Campo tipo: {activity.fieldType}]
-            </Typography>
-          );
-      }
-    };
-
-    return (
-      <Paper key={activity.id} sx={{ p: 3, mb: 3 }}>
-        <Box display="flex" alignItems="center" gap={1} mb={1}>
-          <Typography variant="h6">
-            {activity.name}
-            {activity.required && <span style={{ color: 'red' }}> *</span>}
-          </Typography>
-          {activity.allowMultiple && (
-            <Chip
-              label={`Repetible (${activity.repeatCount}x)`}
-              size="small"
-              color="primary"
-              variant="outlined"
-            />
-          )}
-        </Box>
-
-        {activity.helpText && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            {activity.helpText}
-          </Alert>
-        )}
-
-        {activity.allowMultiple ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {(activity.requireDate || activity.requireTime) && 
-             ((activity.requireDate && activity.requireDatePerMeasurement === false) || 
-              (activity.requireTime && activity.requireTimePerMeasurement === false)) && (
-              <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Fecha/Hora para todas las mediciones:
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  {activity.requireDate && activity.requireDatePerMeasurement === false && (() => {
-                    const dateError = shouldShowDateTimeError(activity).date;
-                    return (
-                      <TextField
-                        type="date"
-                        label="Fecha de realización (común a todas las mediciones)"
-                        value={formValues[`${activity.id}_date`] || ''}
-                        onChange={(e) => handleChange(`${activity.id}_date`, e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                        size="small"
-                        sx={{ minWidth: 200 }}
-                        error={dateError}
-                        helperText={dateError ? 'La fecha es obligatoria cuando se ingresa un valor' : ''}
-                      />
-                    );
-                  })()}
-                  {activity.requireTime && activity.requireTimePerMeasurement === false && (() => {
-                    const timeError = shouldShowDateTimeError(activity).time;
-                    return (
-                      <TextField
-                        type="text"
-                        label="Hora de realización (común a todas las mediciones)"
-                        placeholder="HH:MM"
-                        value={normalizeTime(formValues[`${activity.id}_time`] || '')}
-                        onChange={(e) => {
-                          const formatted = formatTimeInput(e.target.value);
-                          handleChange(`${activity.id}_time`, formatted);
-                        }}
-                        onBlur={(e) => {
-                          const timeValue = normalizeTime(e.target.value);
-                          if (timeValue && !isValidTime(timeValue)) {
-                            handleChange(`${activity.id}_time`, '');
-                          } else {
-                            handleChange(`${activity.id}_time`, timeValue);
-                          }
-                        }}
-                        InputLabelProps={{ shrink: true }}
-                        inputProps={{ 
-                          maxLength: 5,
-                          pattern: '[0-9]{2}:[0-9]{2}'
-                        }}
-                        size="small"
-                        sx={{ minWidth: 200 }}
-                        error={timeError}
-                        helperText={
-                          timeError 
-                            ? 'La hora es obligatoria cuando se ingresa un valor' 
-                            : 'Formato: HH:MM (ej: 14:30)'
-                        }
-                      />
-                    );
-                  })()}
-                </Box>
-              </Box>
-            )}
-            
-            {Array.from({ length: activity.repeatCount || 3 }).map((_, index) => (
-              <Box key={index}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Medición {index + 1}:
-                </Typography>
-                {renderSingleField(index)}
-                
-                {((activity.requireDate && activity.requireDatePerMeasurement !== false) || 
-                  (activity.requireTime && activity.requireTimePerMeasurement !== false)) && (
-                  <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    {activity.requireDate && activity.requireDatePerMeasurement !== false && (() => {
-                      const dateError = shouldShowDateTimeError(activity, index).date;
-                      return (
-                        <TextField
-                          type="date"
-                          label="Fecha de realización"
-                          value={formValues[`${activity.id}_date_${index}`] || ''}
-                          onChange={(e) => handleChange(`${activity.id}_date_${index}`, e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                          size="small"
-                          sx={{ minWidth: 200 }}
-                          error={dateError}
-                          helperText={dateError ? 'La fecha es obligatoria cuando se ingresa un valor' : ''}
-                        />
-                      );
-                    })()}
-                    {activity.requireTime && activity.requireTimePerMeasurement !== false && (() => {
-                      const timeError = shouldShowDateTimeError(activity, index).time;
-                      const hasTimeInterval = activity.timeIntervalMinutes && activity.timeIntervalMinutes > 0;
-                      const isFirstMeasurement = index === 0;
-                      
-                      if (hasTimeInterval && !isFirstMeasurement) {
-                        const firstTime = normalizeTime(formValues[`${activity.id}_time_0`] || '');
-                        const calculatedTime = firstTime && isValidTime(firstTime)
-                          ? addMinutesToTime(firstTime, activity.timeIntervalMinutes! * index)
-                          : '';
-                        return (
-                          <TextField
-                            type="text"
-                            label="Hora de realización"
-                            value={calculatedTime}
-                            InputLabelProps={{ shrink: true }}
-                            size="small"
-                            sx={{ minWidth: 200 }}
-                            InputProps={{
-                              readOnly: true,
-                            }}
-                            helperText={`Calculada automáticamente (+${activity.timeIntervalMinutes! * index} min desde la primera)`}
-                          />
-                        );
-                      }
-                      
-                      return (
-                        <TextField
-                          type="text"
-                          label="Hora de realización"
-                          placeholder="HH:MM"
-                          value={normalizeTime(formValues[`${activity.id}_time_${index}`] || '')}
-                          onChange={(e) => {
-                            const formatted = formatTimeInput(e.target.value);
-                            handleChange(`${activity.id}_time_${index}`, formatted);
-                          }}
-                          onBlur={(e) => {
-                            const timeValue = normalizeTime(e.target.value);
-                            if (timeValue && !isValidTime(timeValue)) {
-                              handleChange(`${activity.id}_time_${index}`, '');
-                            } else {
-                              handleChange(`${activity.id}_time_${index}`, timeValue);
-                            }
-                          }}
-                          InputLabelProps={{ shrink: true }}
-                          inputProps={{ 
-                            maxLength: 5,
-                            pattern: '[0-9]{2}:[0-9]{2}'
-                          }}
-                          size="small"
-                          sx={{ minWidth: 200 }}
-                          error={timeError}
-                          helperText={
-                            hasTimeInterval && isFirstMeasurement
-                              ? 'Las demás horas se calcularán automáticamente'
-                              : timeError 
-                                ? 'La hora es obligatoria cuando se ingresa un valor' 
-                                : 'Formato: HH:MM (ej: 14:30)'
-                          }
-                        />
-                      );
-                    })()}
-                  </Box>
-                )}
-              </Box>
-            ))}
-          </Box>
-        ) : (
-          <>
-            {renderSingleField()}
-            
-            {(activity.requireDate || activity.requireTime) && (
-              <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                {activity.requireDate && (() => {
-                  const dateError = shouldShowDateTimeError(activity).date;
-                  return (
-                    <TextField
-                      type="date"
-                      label="Fecha en que se realizó la actividad"
-                      value={formValues[`${activity.id}_date`] || ''}
-                      onChange={(e) => handleChange(`${activity.id}_date`, e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                      size="small"
-                      sx={{ minWidth: 200 }}
-                      error={dateError}
-                      helperText={dateError ? 'La fecha es obligatoria cuando se ingresa un valor' : ''}
-                    />
-                  );
-                })()}
-                {activity.requireTime && (() => {
-                  const timeError = shouldShowDateTimeError(activity).time;
-                  return (
-                    <TextField
-                      type="text"
-                      label="Hora en que se realizó la actividad"
-                      placeholder="HH:MM"
-                      value={normalizeTime(formValues[`${activity.id}_time`] || '')}
-                      onChange={(e) => {
-                        const formatted = formatTimeInput(e.target.value);
-                        handleChange(`${activity.id}_time`, formatted);
-                      }}
-                      onBlur={(e) => {
-                        const timeValue = normalizeTime(e.target.value);
-                        if (timeValue && !isValidTime(timeValue)) {
-                          handleChange(`${activity.id}_time`, '');
-                        } else {
-                          handleChange(`${activity.id}_time`, timeValue);
-                        }
-                      }}
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ 
-                        maxLength: 5,
-                        pattern: '[0-9]{2}:[0-9]{2}'
-                      }}
-                      size="small"
-                      sx={{ minWidth: 200 }}
-                      error={timeError}
-                      helperText={
-                        timeError 
-                          ? 'La hora es obligatoria cuando se ingresa un valor' 
-                          : 'Formato: HH:MM (ej: 14:30)'
-                      }
-                    />
-                  );
-                })()}
-              </Box>
-            )}
-          </>
-        )}
-
-        {showValidation && activityErrors.length > 0 && (
-          <Box sx={{ mt: 2 }}>
-            {activityErrors.map((error, idx) => (
-              <Alert 
-                key={idx} 
-                severity={error.rule.severity === 'error' ? 'error' : 'warning'}
-                icon={error.rule.severity === 'error' ? <ErrorIcon /> : <WarningIcon />}
-                sx={{ mb: 1 }}
-              >
-                <Typography variant="subtitle2" fontWeight="bold">
-                  {error.rule.name}
-                </Typography>
-                <Typography variant="body2">
-                  {error.rule.message}
-                </Typography>
-                {error.currentValue !== undefined && (
-                  <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-                    Valor actual: {error.currentValue}
-                  </Typography>
-                )}
-              </Alert>
-            ))}
-          </Box>
-        )}
-      </Paper>
-    );
   };
 
   const hasBlockingErrors = validationErrors.some(e => e.rule.severity === 'error');
@@ -2051,7 +1101,50 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
         </Alert>
       ) : (
         <Box>
-          {sortedActivities.map(activity => renderField(activity))}
+          {sortedActivities.map(activity => (
+            <ActivityFieldRenderer
+              key={activity.id}
+              activity={activity}
+              formValues={formValues}
+              validationErrors={validationErrors}
+              showValidation={showValidation}
+              handleChange={handleChange}
+              evaluateFormula={evaluateFormula}
+              shouldShowDateTimeError={shouldShowDateTimeError}
+              medicationErrors={medicationErrors}
+              setMedicationErrors={setMedicationErrors}
+              fieldWrapper={(fieldElement, act, index) => {
+                // Solo mostrar el botón en el primer campo (no en campos repetibles individuales)
+                if (index !== undefined) {
+                  return fieldElement;
+                }
+                
+                const hasDescription = activityDescriptions[act.id] || act.description;
+                
+                return (
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                    <Box sx={{ flex: 1 }}>
+                      {fieldElement}
+                    </Box>
+                    <Tooltip title={hasDescription ? "Editar aclaración para IA" : "Agregar aclaración para IA"}>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleOpenDescriptionDialog(act.id)}
+                        color={hasDescription ? "primary" : "default"}
+                        sx={{ 
+                          mt: 1,
+                          border: hasDescription ? '1px solid' : '1px dashed',
+                          borderColor: hasDescription ? 'primary.main' : 'grey.400',
+                        }}
+                      >
+                        <AddIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                );
+              }}
+            />
+          ))}
         </Box>
       )}
 

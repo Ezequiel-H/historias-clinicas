@@ -19,6 +19,7 @@ import {
   Save as SaveIcon,
 } from '@mui/icons-material';
 import protocolService from '../../services/protocolService';
+import { preventNumberInputScroll } from '../../components/protocols/shared';
 
 export const VisitFormPage: React.FC = () => {
   const { protocolId, visitId } = useParams<{ protocolId: string; visitId: string }>();
@@ -221,6 +222,7 @@ export const VisitFormPage: React.FC = () => {
             required
             value={currentOrder}
             disabled
+            onWheel={preventNumberInputScroll}
             helperText="El orden se calcula automáticamente según la posición en la lista de visitas"
             inputProps={{ min: 1 }}
           />
