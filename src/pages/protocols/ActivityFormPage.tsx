@@ -22,11 +22,6 @@ import {
   Chip,
   CircularProgress,
   Autocomplete,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Snackbar,
   Table,
   TableBody,
   TableCell,
@@ -54,6 +49,7 @@ import {
 } from '@mui/icons-material';
 import type { FieldType, SelectOption, ActivityRule, MedicationTrackingConfig } from '../../types';
 import protocolService from '../../services/protocolService';
+import { preventNumberInputScroll } from '../../components/protocols/shared';
 
 const FIELD_TYPES = [
   {
@@ -182,8 +178,6 @@ export const ActivityFormPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
-  const [showValuesDialog, setShowValuesDialog] = useState(false);
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
   const selectedFieldType = FIELD_TYPES.find(ft => ft.value === formData.fieldType);
 
@@ -850,6 +844,7 @@ export const ActivityFormPage: React.FC = () => {
                   setFormData({ ...formData, decimalPlaces: value });
                 }
               }}
+              onWheel={preventNumberInputScroll}
               fullWidth
               inputProps={{ min: 0, max: 10, step: 1 }}
               helperText="Los valores se formatearán automáticamente con esta cantidad de decimales (0-10)"
@@ -1258,6 +1253,7 @@ export const ActivityFormPage: React.FC = () => {
                 type="number"
                 value={medicationConfig.quantityPerDose || 1}
                 onChange={(e) => setMedicationConfig({ ...medicationConfig, quantityPerDose: parseFloat(e.target.value) || 1 })}
+                onWheel={preventNumberInputScroll}
                 inputProps={{ min: 0.1, step: 0.1 }}
                 fullWidth
                 sx={{ mb: 2 }}
@@ -1356,6 +1352,7 @@ export const ActivityFormPage: React.FC = () => {
                         setFormData({ ...formData, repeatCount: 3 });
                       }
                     }}
+                    onWheel={preventNumberInputScroll}
                     inputProps={{ min: 1, max: 10 }}
                     size="small"
                     sx={{ width: 180 }}
@@ -1585,6 +1582,7 @@ export const ActivityFormPage: React.FC = () => {
                               }
                             }
                           }}
+                          onWheel={preventNumberInputScroll}
                           size="small"
                           sx={{ width: 250 }}
                           helperText="Si configuras un intervalo, solo se preguntará la hora de la primera medición. Las demás se calcularán automáticamente."
@@ -1983,6 +1981,7 @@ export const ActivityFormPage: React.FC = () => {
                           type="number"
                           value={rule.minValue || ''}
                           onChange={(e) => updateValidationRule(index, { minValue: parseFloat(e.target.value) })}
+                          onWheel={preventNumberInputScroll}
                           size="small"
                           sx={{ width: 150 }}
                         />
@@ -1994,6 +1993,7 @@ export const ActivityFormPage: React.FC = () => {
                           type="number"
                           value={rule.maxValue || ''}
                           onChange={(e) => updateValidationRule(index, { maxValue: parseFloat(e.target.value) })}
+                          onWheel={preventNumberInputScroll}
                           size="small"
                           sx={{ width: 150 }}
                         />
@@ -2006,6 +2006,7 @@ export const ActivityFormPage: React.FC = () => {
                             type="number"
                             value={rule.minValue || ''}
                             onChange={(e) => updateValidationRule(index, { minValue: parseFloat(e.target.value) })}
+                            onWheel={preventNumberInputScroll}
                             size="small"
                             sx={{ width: 120 }}
                           />
@@ -2014,6 +2015,7 @@ export const ActivityFormPage: React.FC = () => {
                             type="number"
                             value={rule.maxValue || ''}
                             onChange={(e) => updateValidationRule(index, { maxValue: parseFloat(e.target.value) })}
+                            onWheel={preventNumberInputScroll}
                             size="small"
                             sx={{ width: 120 }}
                           />

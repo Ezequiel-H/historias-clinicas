@@ -1,26 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  TextField,
+  Alert,
+  Chip,
+  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
-  Box,
-  Typography,
-  Alert,
-  Chip,
-  Snackbar,
+  Tooltip,
 } from '@mui/material';
 import {
-  Close as CloseIcon,
+  ArrowBack as BackIcon,
   Send as SendIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
-  CheckCircle as CheckCircleIcon,
+  Add as AddIcon,
 } from '@mui/icons-material';
-import type { Activity, ActivityRule } from '../../types';
+import type { Visit, Activity, ActivityRule } from '../../types';
 import {
-  parseLocalDate,
   normalizeTime,
   isValidTime,
   addMinutesToTime,
@@ -29,11 +31,12 @@ import {
   detectAdherenceProblems,
 } from './shared';
 
-interface VisitFormPreviewProps {
-  open: boolean;
-  onClose: () => void;
-  visitName: string;
-  activities: Activity[];
+interface PatientVisitFormProps {
+  visit: Visit;
+  protocolName: string;
+  patientId: string;
+  onComplete: (data: any) => void;
+  onCancel: () => void;
 }
 
 interface ValidationError {
@@ -43,7 +46,6 @@ interface ValidationError {
   currentValue?: any;
 }
 
-// Tipo para funciones de validación estandarizadas
 type ValidationFunction = (
   activity: Activity,
   value: any,
@@ -51,18 +53,21 @@ type ValidationFunction = (
   index?: number
 ) => { isValid: boolean; error?: ValidationError };
 
-export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
-  open,
-  onClose,
-  visitName,
-  activities,
+export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
+  visit,
+  protocolName,
+  patientId,
+  onComplete,
+  onCancel,
 }) => {
+  const activities = visit.activities || [];
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [showValuesDialog, setShowValuesDialog] = useState(false);
-  const [validatedFormData, setValidatedFormData] = useState<any>(null);
+  const [activityDescriptions, setActivityDescriptions] = useState<Record<string, string>>({});
+  const [descriptionDialogOpen, setDescriptionDialogOpen] = useState(false);
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [descriptionText, setDescriptionText] = useState('');
   
   // Estado para manejar errores de adherencia y decisiones del médico
   const [medicationErrors, setMedicationErrors] = useState<Record<string, Record<string, {
@@ -78,46 +83,39 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     let hasValue = false;
     
     if (index !== undefined) {
-      // Para campos repetibles
       const measurementValue = Array.isArray(value) ? value[index] : undefined;
       hasValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
     } else {
-      // Para campos simples o fecha/hora global
       if (activity.allowMultiple) {
-        // Si es repetible y fecha/hora global, verificar si hay al menos una medición con valor
         hasValue = Array.isArray(value) && value.some(v => v !== '' && v !== null && v !== undefined);
       } else {
-      hasValue = value !== undefined && value !== null && value !== '' && 
-                 !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+        hasValue = value !== undefined && value !== null && value !== '' && 
+                   !(Array.isArray(value) && value.every(v => v === '' || v === null || v !== undefined));
       }
     }
     
     if (!hasValue) return { date: false, time: false };
     
-    // Determinar las claves según el modo (global o por medición)
     let dateKey: string;
     let timeKey: string;
     
     if (activity.allowMultiple) {
       if (index !== undefined) {
-        // Modo por medición
         if (activity.requireDatePerMeasurement !== false) {
           dateKey = `${activity.id}_date_${index}`;
         } else {
-          dateKey = `${activity.id}_date`; // Global
+          dateKey = `${activity.id}_date`;
         }
         if (activity.requireTimePerMeasurement !== false) {
           timeKey = `${activity.id}_time_${index}`;
         } else {
-          timeKey = `${activity.id}_time`; // Global
+          timeKey = `${activity.id}_time`;
         }
       } else {
-        // Modo global (sin índice)
         dateKey = `${activity.id}_date`;
         timeKey = `${activity.id}_time`;
       }
     } else {
-      // Campos simples
       dateKey = `${activity.id}_date`;
       timeKey = `${activity.id}_time`;
     }
@@ -128,36 +126,21 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     };
   };
 
-  // Resetear el formulario cuando se abre/cierra el modal
-  useEffect(() => {
-    if (!open) {
-      setFormValues({});
-      setValidationErrors([]);
-      setShowValidation(false);
-      setShowSuccessToast(false);
-      setShowValuesDialog(false);
-      setValidatedFormData(null);
-      setMedicationErrors({});
-    }
-  }, [open]);
-
   // Actualizar valores calculados automáticamente cuando cambien los valores del formulario
-  // Usamos un ref para evitar loops infinitos
   const prevFormValuesRef = useRef<Record<string, any>>({});
   
   useEffect(() => {
-    // Solo actualizar si realmente cambió algún valor (no los calculados)
     const calculatedActivityIds = activities
       .filter(a => a.fieldType === 'calculated')
       .map(a => a.id);
     
     const relevantValuesChanged = Object.keys(formValues).some(key => {
-      if (calculatedActivityIds.includes(key)) return false; // Ignorar cambios en campos calculados
+      if (calculatedActivityIds.includes(key)) return false;
       return formValues[key] !== prevFormValuesRef.current[key];
     });
 
     if (!relevantValuesChanged && Object.keys(prevFormValuesRef.current).length > 0) {
-      return; // No hay cambios relevantes
+      return;
     }
 
     const newFormValues = { ...formValues };
@@ -177,7 +160,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             hasChanges = true;
           }
         } else {
-          // Si no se puede calcular, mantener vacío
           if (newFormValues[activity.id] !== undefined && newFormValues[activity.id] !== '') {
             newFormValues[activity.id] = '';
             hasChanges = true;
@@ -198,7 +180,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     let newFormValues: Record<string, any>;
     
     if (index !== undefined) {
-      // Para campos repetibles
       const currentValues = formValues[activityId] || [];
       const newValues = [...currentValues];
       newValues[index] = value;
@@ -207,7 +188,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       newFormValues = { ...formValues, [activityId]: value };
     }
     
-    // Si es un cambio de hora de la primera medición y hay intervalo configurado, calcular las demás
     if (activityId.includes('_time_0')) {
       const baseActivityId = activityId.replace('_time_0', '');
       const activity = activities.find(a => a.id === baseActivityId);
@@ -216,7 +196,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           activity.repeatCount) {
         const firstTime = normalizeTime(value);
         if (firstTime && isValidTime(firstTime)) {
-          // Calcular las horas de las demás mediciones
           for (let i = 1; i < activity.repeatCount; i++) {
             const calculatedTime = addMinutesToTime(firstTime, activity.timeIntervalMinutes * i);
             newFormValues[`${baseActivityId}_time_${i}`] = calculatedTime;
@@ -227,48 +206,54 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     
     setFormValues(newFormValues);
     
-    // Re-validar en tiempo real si ya se mostró la validación
     if (showValidation) {
       revalidateForm(newFormValues);
     }
   };
 
-  // ============================================
-  // FUNCIONES DE VALIDACIÓN ESTANDARIZADAS
-  // ============================================
+  const handleOpenDescriptionDialog = (activityId: string) => {
+    const activity = activities.find(a => a.id === activityId);
+    const currentDescription = activityDescriptions[activityId] || activity?.description || '';
+    setEditingActivityId(activityId);
+    setDescriptionText(currentDescription);
+    setDescriptionDialogOpen(true);
+  };
 
-  /**
-   * Construye el array de funciones de validación para una actividad
-   */
+  const handleCloseDescriptionDialog = () => {
+    setDescriptionDialogOpen(false);
+    setEditingActivityId(null);
+    setDescriptionText('');
+  };
+
+  const handleSaveDescription = () => {
+    if (editingActivityId) {
+      setActivityDescriptions(prev => ({
+        ...prev,
+        [editingActivityId]: descriptionText,
+      }));
+    }
+    handleCloseDescriptionDialog();
+  };
+
+  // Construir el array de funciones de validación para una actividad
   const buildValidationRules = (activity: Activity): ValidationFunction[] => {
     const rules: ValidationFunction[] = [];
 
-    // 1. Validación de campo requerido
     if (activity.required) {
       rules.push(validateRequired);
     }
-
-    // 2. Validación de fecha requerida (si hay valor)
     if (activity.requireDate) {
       rules.push(validateRequiredDate);
     }
-
-    // 3. Validación de hora requerida (si hay valor)
     if (activity.requireTime) {
       rules.push(validateRequiredTime);
     }
-
-    // 4. Validación de opciones obligatorias
     if (activity.options && activity.options.some(opt => opt.required)) {
       rules.push(validateRequiredOptions);
     }
-
-    // 5. Validación de opciones excluyentes
     if (activity.options && activity.options.some(opt => opt.exclusive)) {
       rules.push(validateExclusiveOptions);
     }
-
-    // 6. Validación de reglas personalizadas (validationRules)
     if (activity.validationRules && activity.validationRules.length > 0) {
       rules.push(validateCustomRules);
     }
@@ -276,16 +261,11 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     return rules;
   };
 
-  /**
-   * Valida que el campo requerido tenga un valor
-   */
   const validateRequired: ValidationFunction = (activity, value, formValues, index) => {
-    // Para campos datetime, validar según datetimeIncludeDate y datetimeIncludeTime
     if (activity.fieldType === 'datetime') {
       const includeDate = activity.datetimeIncludeDate !== undefined ? activity.datetimeIncludeDate : true;
       const includeTime = activity.datetimeIncludeTime !== undefined ? activity.datetimeIncludeTime : false;
       
-      // Determinar las claves de fecha y hora
       let dateKey: string;
       let timeKey: string;
       
@@ -303,7 +283,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       const hasDateValue = includeDate && dateValue !== undefined && dateValue !== null && dateValue !== '';
       const hasTimeValue = includeTime && timeValue !== undefined && timeValue !== null && timeValue !== '';
       
-      // Si requiere ambos, ambos deben estar presentes
       if (includeDate && includeTime) {
         if (hasDateValue && hasTimeValue) {
           return { isValid: true };
@@ -326,7 +305,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         };
       }
       
-      // Si solo requiere uno, ese debe estar presente
       if (includeDate && !hasDateValue) {
         return {
           isValid: false,
@@ -368,7 +346,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       return { isValid: true };
     }
     
-    // Para campos repetibles con índice específico, validar solo esa medición
     if (activity.allowMultiple && index !== undefined) {
       const measurementValue = Array.isArray(value) ? value[index] : undefined;
       const hasMeasurementValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
@@ -377,8 +354,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         return { isValid: true };
       }
       
-      // Para campos repetibles, no mostrar error por medición individual si hay otras con valor
-      // Solo validar si es la primera medición o si todas están vacías
       if (index === 0 || (Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined))) {
         return {
           isValid: false,
@@ -401,7 +376,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       return { isValid: true };
     }
     
-    // Para campos simples o validación general de repetibles
     const hasValue = value !== undefined && value !== null && value !== '' && 
                     !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
     
@@ -427,39 +401,32 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     };
   };
 
-  /**
-   * Valida que la fecha esté presente cuando hay valor en el campo principal
-   */
   const validateRequiredDate: ValidationFunction = (activity, value, formValues, index) => {
     let hasValue = false;
     let dateKey: string;
     
     if (activity.allowMultiple) {
       if (index !== undefined) {
-        // Validación por medición individual
         const measurementValue = Array.isArray(value) ? value[index] : undefined;
         hasValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
         if (!hasValue) {
-          return { isValid: true }; // No validar si esta medición no tiene valor
+          return { isValid: true };
         }
-        // Determinar si es por medición o global
         if (activity.requireDatePerMeasurement !== false) {
           dateKey = `${activity.id}_date_${index}`;
         } else {
-          dateKey = `${activity.id}_date`; // Global
+          dateKey = `${activity.id}_date`;
         }
       } else {
-        // Validación global: verificar si hay al menos una medición con valor
         hasValue = Array.isArray(value) && value.some(v => v !== '' && v !== null && v !== undefined);
         if (!hasValue) {
           return { isValid: true };
         }
-        dateKey = `${activity.id}_date`; // Siempre global cuando no hay índice
+        dateKey = `${activity.id}_date`;
       }
     } else {
-      // Campo simple
       hasValue = value !== undefined && value !== null && value !== '' && 
-                 !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+                 !(Array.isArray(value) && value.every(v => v === '' || v === null || v !== undefined));
       if (!hasValue) {
         return { isValid: true };
       }
@@ -494,39 +461,32 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     };
   };
 
-  /**
-   * Valida que la hora esté presente cuando hay valor en el campo principal
-   */
   const validateRequiredTime: ValidationFunction = (activity, value, formValues, index) => {
     let hasValue = false;
     let timeKey: string;
     
     if (activity.allowMultiple) {
       if (index !== undefined) {
-        // Validación por medición individual
         const measurementValue = Array.isArray(value) ? value[index] : undefined;
         hasValue = measurementValue !== undefined && measurementValue !== null && measurementValue !== '';
         if (!hasValue) {
-          return { isValid: true }; // No validar si esta medición no tiene valor
+          return { isValid: true };
         }
-        // Determinar si es por medición o global
         if (activity.requireTimePerMeasurement !== false) {
           timeKey = `${activity.id}_time_${index}`;
         } else {
-          timeKey = `${activity.id}_time`; // Global
+          timeKey = `${activity.id}_time`;
         }
       } else {
-        // Validación global: verificar si hay al menos una medición con valor
         hasValue = Array.isArray(value) && value.some(v => v !== '' && v !== null && v !== undefined);
         if (!hasValue) {
           return { isValid: true };
         }
-        timeKey = `${activity.id}_time`; // Siempre global cuando no hay índice
+        timeKey = `${activity.id}_time`;
       }
     } else {
-      // Campo simple
       hasValue = value !== undefined && value !== null && value !== '' && 
-                 !(Array.isArray(value) && value.every(v => v === '' || v === null || v === undefined));
+                 !(Array.isArray(value) && value.every(v => v === '' || v === null || v !== undefined));
       if (!hasValue) {
         return { isValid: true };
       }
@@ -561,9 +521,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     };
   };
 
-  /**
-   * Valida que las opciones obligatorias estén seleccionadas
-   */
   const validateRequiredOptions: ValidationFunction = (activity, value) => {
     if (!activity.options) {
       return { isValid: true };
@@ -577,17 +534,17 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         return {
           isValid: false,
           error: {
-          activityId: activity.id,
-          activityName: activity.name,
-          rule: {
+            activityId: activity.id,
+            activityName: activity.name,
+            rule: {
               id: `required_${requiredOpt.value}`,
               name: 'Opción obligatoria no seleccionada',
               condition: 'equals',
               value: requiredOpt.value,
-            severity: 'error',
+              severity: 'error',
               message: `La opción "${requiredOpt.label}" debe ser seleccionada obligatoriamente para que el paciente califique para este protocolo.`,
-            isActive: true,
-          },
+              isActive: true,
+            },
           },
         };
       }
@@ -596,9 +553,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     return { isValid: true };
   };
 
-  /**
-   * Valida que no se hayan seleccionado opciones excluyentes
-   */
   const validateExclusiveOptions: ValidationFunction = (activity, value) => {
     if (!activity.options) {
       return { isValid: true };
@@ -612,17 +566,17 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         return {
           isValid: false,
           error: {
-          activityId: activity.id,
-          activityName: activity.name,
-          rule: {
+            activityId: activity.id,
+            activityName: activity.name,
+            rule: {
               id: `exclusive_${exclusiveOpt.value}`,
               name: 'Opción excluyente seleccionada',
               condition: 'equals',
               value: exclusiveOpt.value,
-            severity: 'error',
+              severity: 'error',
               message: `La opción "${exclusiveOpt.label}" es excluyente. Si el paciente tiene esta condición, NO califica para este protocolo.`,
-            isActive: true,
-          },
+              isActive: true,
+            },
           },
         };
       }
@@ -631,25 +585,19 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     return { isValid: true };
   };
 
-  /**
-   * Valida las reglas personalizadas (validationRules)
-   */
   const validateCustomRules: ValidationFunction = (activity, value, formValues, index) => {
     if (!activity.validationRules || activity.validationRules.length === 0) {
       return { isValid: true };
     }
 
-    // Obtener el valor numérico a validar
     let numericValue: number | null = null;
     
-    // Si hay un índice específico (campos repetibles), validar solo esa medición
     if (activity.allowMultiple && index !== undefined && Array.isArray(value)) {
       const measurementValue = value[index];
       if (measurementValue !== '' && measurementValue !== null && !isNaN(Number(measurementValue))) {
         numericValue = Number(measurementValue);
       }
     } else if (activity.allowMultiple && Array.isArray(value)) {
-      // Si es repetible pero no hay índice, calcular promedio (para compatibilidad)
       const numericValues = value.filter(v => v !== '' && v !== null && !isNaN(Number(v))).map(Number);
       if (numericValues.length > 0) {
         numericValue = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
@@ -659,7 +607,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     }
     
     if (numericValue === null) {
-      return { isValid: true }; // No validar si no hay valor
+      return { isValid: true };
     }
 
     for (const rule of activity.validationRules) {
@@ -673,13 +621,11 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             violated = true;
           }
           break;
-        
         case 'max':
           if (rule.maxValue !== undefined && numericValue > rule.maxValue) {
             violated = true;
           }
           break;
-        
         case 'range':
           if (rule.minValue !== undefined && rule.maxValue !== undefined) {
             if (numericValue < rule.minValue || numericValue > rule.maxValue) {
@@ -687,19 +633,16 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             }
           }
           break;
-        
         case 'equals':
           if (rule.value !== undefined && numericValue !== Number(rule.value)) {
             violated = true;
           }
           break;
-        
         case 'not_equals':
           if (rule.value !== undefined && numericValue === Number(rule.value)) {
             violated = true;
           }
           break;
-        
         case 'formula':
           if (rule.formula) {
             const operator = rule.formulaOperator || '>';
@@ -732,7 +675,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       }
 
       if (violated) {
-        // Crear un mensaje personalizado que incluya el número de medición si es repetible
         const measurementText = activity.allowMultiple && index !== undefined 
           ? ` (Medición ${index + 1})` 
           : '';
@@ -744,10 +686,10 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         return {
           isValid: false,
           error: {
-          activityId: activity.id,
-          activityName: activity.name,
+            activityId: activity.id,
+            activityName: activity.name,
             rule: customRule,
-          currentValue: numericValue,
+            currentValue: numericValue,
           },
         };
       }
@@ -756,9 +698,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     return { isValid: true };
   };
 
-  /**
-   * Ejecuta todas las validaciones para una actividad
-   */
   const runValidations = (
     activity: Activity,
     value: any,
@@ -779,27 +718,23 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   };
 
   const revalidateForm = (values: Record<string, any>) => {
-    // Validar reglas de todas las actividades usando el sistema estandarizado
     const allErrors: ValidationError[] = [];
     
     for (const activity of activities) {
       const value = values[activity.id];
       
-        if (activity.allowMultiple && activity.repeatCount) {
-        // Para campos repetibles, validar cada medición individualmente
-          for (let i = 0; i < activity.repeatCount; i++) {
+      if (activity.allowMultiple && activity.repeatCount) {
+        for (let i = 0; i < activity.repeatCount; i++) {
           const errors = runValidations(activity, value, values, i);
           allErrors.push(...errors);
         }
         
-        // Si fecha/hora es global, validar también sin índice (una vez para todas)
         if ((activity.requireDate && activity.requireDatePerMeasurement === false) ||
             (activity.requireTime && activity.requireTimePerMeasurement === false)) {
           const globalErrors = runValidations(activity, value, values);
           allErrors.push(...globalErrors);
-          }
-        } else {
-        // Para campos simples
+        }
+      } else {
         const errors = runValidations(activity, value, values);
         allErrors.push(...errors);
       }
@@ -810,18 +745,14 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
 
   const evaluateFormula = (formula: string, activityValues: Record<string, any>): number | null => {
     try {
-      // Crear un objeto con los valores de las actividades numéricas
       const context: Record<string, number> = {};
       
       for (const [activityId, value] of Object.entries(activityValues)) {
         const activity = activities.find(a => a.id === activityId);
         if (activity) {
-          // Normalizar el nombre de la actividad como variable (lowercase y trim)
           const originalName = activity.name.toLowerCase().trim();
-          // También crear versión sin espacios para mayor flexibilidad
           const normalizedName = originalName.replace(/\s+/g, '');
           
-          // Para campos repetibles, usar el promedio
           let numValue: number | undefined;
           if (Array.isArray(value)) {
             const numericValues = value.filter(v => v !== '' && v !== null && !isNaN(Number(v))).map(Number);
@@ -833,7 +764,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           }
           
           if (numValue !== undefined) {
-            // Guardar con ambos nombres (original y sin espacios)
             context[originalName] = numValue;
             if (normalizedName !== originalName) {
               context[normalizedName] = numValue;
@@ -842,23 +772,15 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         }
       }
 
-      // Reemplazar variables en la fórmula
       let processedFormula = formula.toLowerCase().trim();
-      
-      // Ordenar por longitud descendente para reemplazar primero las más largas
-      // (evita que "peso total" se reemplace parcialmente por "peso")
       const sortedVars = Object.keys(context).sort((a, b) => b.length - a.length);
       
       for (const varName of sortedVars) {
-        // Reemplazar la variable con su valor
-        // Usar \b para word boundaries, pero escapar caracteres especiales
         const escapedVar = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`\\b${escapedVar}\\b`, 'gi');
         processedFormula = processedFormula.replace(regex, String(context[varName]));
       }
 
-      // Evaluar la fórmula de forma segura
-      // Solo permitir números, operadores básicos y paréntesis
       if (!/^[\d\s+\-*/.()]+$/.test(processedFormula)) {
         return null;
       }
@@ -873,27 +795,23 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   const handleSubmit = () => {
     setShowValidation(true);
     
-    // Ejecutar todas las validaciones usando el sistema estandarizado
     const allErrors: ValidationError[] = [];
     
     for (const activity of activities) {
-        const value = formValues[activity.id];
+      const value = formValues[activity.id];
       
       if (activity.allowMultiple && activity.repeatCount) {
-        // Para campos repetibles, validar cada medición individualmente
         for (let i = 0; i < activity.repeatCount; i++) {
           const errors = runValidations(activity, value, formValues, i);
           allErrors.push(...errors);
         }
         
-        // Si fecha/hora es global, validar también sin índice (una vez para todas)
         if ((activity.requireDate && activity.requireDatePerMeasurement === false) ||
             (activity.requireTime && activity.requireTimePerMeasurement === false)) {
           const globalErrors = runValidations(activity, value, formValues);
           allErrors.push(...globalErrors);
-              }
-            } else {
-              // Para campos simples
+        }
+      } else {
         const errors = runValidations(activity, value, formValues);
         allErrors.push(...errors);
       }
@@ -901,16 +819,13 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
 
     setValidationErrors(allErrors);
 
-    // Verificar si hay errores bloqueantes
     const blockingErrors = allErrors.filter(e => e.rule.severity === 'error');
     if (blockingErrors.length === 0) {
-      // Función helper para formatear valores numéricos
       const formatNumericValue = (value: any, activity: Activity): any => {
         if (value === null || value === undefined || value === '') {
           return value;
         }
 
-        // Solo formatear si la actividad tiene decimalPlaces configurado
         if (activity.decimalPlaces === undefined) {
           return value;
         }
@@ -922,7 +837,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
 
         const decimalPlaces = activity.decimalPlaces;
 
-        // Si es un array (campos repetibles), formatear cada valor
         if (Array.isArray(value)) {
           return value.map(v => {
             const num = parseFloat(v);
@@ -931,7 +845,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           });
         }
 
-        // Si es un objeto (campo compuesto), formatear cada campo numérico
         if (typeof value === 'object' && value !== null) {
           const formatted: any = {};
           for (const key in value) {
@@ -945,17 +858,17 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           return formatted;
         }
 
-        // Valor numérico simple
         const num = parseFloat(value);
         if (isNaN(num)) return value;
         return num.toFixed(decimalPlaces);
       };
 
-      // Construir objeto con los valores del formulario
       const formData: any = {
-        visitName,
+        patientId,
+        protocolName,
+        visitName: visit.name,
+        visitType: visit.type,
         activities: activities.map(activity => {
-          // Para campos calculados, calcular el valor automáticamente
           let rawValue = formValues[activity.id];
           if (activity.fieldType === 'calculated' && activity.calculationFormula) {
             const calculated = evaluateFormula(activity.calculationFormula, formValues);
@@ -966,15 +879,15 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           
           const formattedValue = formatNumericValue(rawValue, activity);
           
+          const editedDescription = activityDescriptions[activity.id] || activity.description;
           const activityObj: any = {
             id: activity.id,
             name: activity.name,
             fieldType: activity.fieldType,
             helpText: activity.helpText,
-            description: activity.description,
+            description: editedDescription || activity.description,
           };
 
-          // Incluir campos si existen en la actividad
           if (activity.measurementUnit) {
             activityObj.measurementUnit = activity.measurementUnit;
           }
@@ -1023,11 +936,9 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             }
           } else if (activity.requireDate || activity.requireTime) {
             if (activity.allowMultiple) {
-              // Para campos repetibles con fecha/hora, usar measurements
               const measurements: any[] = [];
               const repeatCount = activity.repeatCount || 3;
               
-              // Determinar si fecha/hora es global o por medición
               const dateIsGlobal = activity.requireDate && activity.requireDatePerMeasurement === false;
               const timeIsGlobal = activity.requireTime && activity.requireTimePerMeasurement === false;
               
@@ -1037,14 +948,12 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                   ? formValues[`${activity.id}_date`]
                   : formValues[`${activity.id}_date_${i}`];
                 
-                // Para tiempo: si hay intervalo configurado y no es la primera medición, calcular automáticamente
                 let measurementTime: string | undefined;
                 if (timeIsGlobal) {
                   measurementTime = formValues[`${activity.id}_time`];
                 } else {
                   const hasTimeInterval = activity.timeIntervalMinutes && activity.timeIntervalMinutes > 0;
                   if (hasTimeInterval && i > 0) {
-                    // Calcular hora basada en la primera medición
                     const firstTime = normalizeTime(formValues[`${activity.id}_time_0`] || '');
                     if (firstTime && isValidTime(firstTime)) {
                       measurementTime = addMinutesToTime(firstTime, (activity.timeIntervalMinutes ?? 0) * i);
@@ -1072,7 +981,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                 activityObj.measurements = measurements;
               }
             } else {
-              // Para campos simples
               activityObj.value = formattedValue;
               const activityDate = formValues[`${activity.id}_date`];
               const activityTime = formValues[`${activity.id}_time`];
@@ -1083,28 +991,23 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                 activityObj.time = normalizeTime(activityTime);
               }
             }
-          } else {
-            // Si no hay fecha/hora, incluir value normalmente
-            activityObj.value = formattedValue;
-          }
-
-          // Procesar medication_tracking: agregar adherencia y errores si el médico decidió incluirlos
-          if (activity.fieldType === 'medication_tracking') {
+          } else if (activity.fieldType === 'medication_tracking') {
+            // Procesar medication_tracking: agregar adherencia y errores si el médico decidió incluirlos
             const medValue = typeof formattedValue === 'object' && formattedValue !== null ? formattedValue : {};
             const lastVisitDate = medValue.lastVisitDate || '';
             const unitsDelivered = medValue.unitsDelivered || '';
             const unitsReturned = medValue.unitsReturned || '';
             const tookMedicationToday = medValue.tookMedicationToday || false;
             
+            activityObj.value = formattedValue;
+            
             if (activity.medicationTrackingConfig) {
-              const visitDate = getVisitDate();
               const adherence = calculateMedicationAdherence(
                 lastVisitDate,
                 unitsDelivered,
                 unitsReturned,
                 tookMedicationToday,
-                activity.medicationTrackingConfig,
-                visitDate
+                activity.medicationTrackingConfig
               );
               
               if (adherence) {
@@ -1157,6 +1060,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                 }
               }
             }
+          } else {
+            activityObj.value = formattedValue;
           }
 
           return activityObj;
@@ -1165,34 +1070,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         timestamp: new Date().toISOString(),
       };
       
-      setValidatedFormData(formData);
-      setShowSuccessToast(true);
-    } else {
-      // Si hay errores, limpiar el objeto validado
-      setValidatedFormData(null);
+      onComplete(formData);
     }
-  };
-
-  // Función helper para obtener la fecha de la visita desde el campo isVisitDate
-  const getVisitDate = (): Date => {
-    const visitDateActivity = activities.find(act =>
-      act.fieldType === 'datetime' &&
-      act.isVisitDate === true &&
-      act.datetimeIncludeDate === true
-    );
-    
-    if (visitDateActivity) {
-      const dateKey = `${visitDateActivity.id}_date`;
-      const visitDateValue = formValues[dateKey];
-      if (visitDateValue) {
-        return parseLocalDate(visitDateValue);
-      }
-    }
-    
-    // Fallback: usar fecha actual
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today;
   };
 
   const hasBlockingErrors = validationErrors.some(e => e.rule.severity === 'error');
@@ -1200,65 +1079,80 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   const sortedActivities = [...activities].sort((a, b) => a.order - b.order);
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      PaperProps={{
-        sx: { minHeight: '80vh' }
-      }}
-    >
-      <DialogTitle>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box>
-            <Typography variant="h5" component="div">
-              Preview: {visitName}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Complete el formulario para probar las validaciones
-            </Typography>
-          </Box>
-          <Button onClick={onClose} startIcon={<CloseIcon />}>
-            Cerrar
-          </Button>
-        </Box>
-      </DialogTitle>
+    <Box>
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h5" gutterBottom>
+          {visit.name}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" gutterBottom>
+          Protocolo: {protocolName}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" gutterBottom>
+          ID Paciente: {patientId}
+        </Typography>
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Complete todos los campos requeridos. Los datos no se guardarán en la base de datos, solo se generará un archivo JSON para descargar.
+        </Alert>
+      </Paper>
 
-      <DialogContent dividers>
-        {activities.length === 0 ? (
-          <Alert severity="info">
-            No hay campos configurados en esta visita. Agregue campos para poder probar el formulario.
-          </Alert>
-        ) : (
-          <Box>
-            <Alert severity="info" sx={{ mb: 3 }}>
-              <Typography variant="body2">
-                Este es un preview del formulario que verán los médicos. Complete los campos y haga clic en "Validar Formulario" para probar las reglas de validación.
-              </Typography>
-            </Alert>
-
-            {sortedActivities.map(activity => (
-              <ActivityFieldRenderer
-                key={activity.id}
-                activity={activity}
-                formValues={formValues}
-                validationErrors={validationErrors}
-                showValidation={showValidation}
-                handleChange={handleChange}
-                evaluateFormula={evaluateFormula}
-                shouldShowDateTimeError={shouldShowDateTimeError}
-                medicationErrors={medicationErrors}
-                setMedicationErrors={setMedicationErrors}
-                getVisitDate={getVisitDate}
-              />
-            ))}
-          </Box>
-        )}
-      </DialogContent>
-
-      <DialogActions sx={{ p: 2, gap: 1, justifyContent: 'space-between' }}>
+      {activities.length === 0 ? (
+        <Alert severity="info">
+          No hay campos configurados en esta visita.
+        </Alert>
+      ) : (
         <Box>
+          {sortedActivities.map(activity => (
+            <ActivityFieldRenderer
+              key={activity.id}
+              activity={activity}
+              formValues={formValues}
+              validationErrors={validationErrors}
+              showValidation={showValidation}
+              handleChange={handleChange}
+              evaluateFormula={evaluateFormula}
+              shouldShowDateTimeError={shouldShowDateTimeError}
+              medicationErrors={medicationErrors}
+              setMedicationErrors={setMedicationErrors}
+              fieldWrapper={(fieldElement, act, index) => {
+                // Solo mostrar el botón en el primer campo (no en campos repetibles individuales)
+                if (index !== undefined) {
+                  return fieldElement;
+                }
+                
+                const hasDescription = activityDescriptions[act.id] || act.description;
+                
+                return (
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                    <Box sx={{ flex: 1 }}>
+                      {fieldElement}
+                    </Box>
+                    <Tooltip title={hasDescription ? "Editar aclaración para IA" : "Agregar aclaración para IA"}>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleOpenDescriptionDialog(act.id)}
+                        color={hasDescription ? "primary" : "default"}
+                        sx={{ 
+                          mt: 1,
+                          border: hasDescription ? '1px solid' : '1px dashed',
+                          borderColor: hasDescription ? 'primary.main' : 'grey.400',
+                        }}
+                      >
+                        <AddIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                );
+              }}
+            />
+          ))}
+        </Box>
+      )}
+
+      <Box display="flex" justifyContent="space-between" gap={2} sx={{ mt: 4 }}>
+        <Button onClick={onCancel} variant="outlined" startIcon={<BackIcon />}>
+          Volver
+        </Button>
+        <Box display="flex" gap={1} alignItems="center">
           {showValidation && (hasBlockingErrors || hasWarnings) && (
             <Box display="flex" gap={1} alignItems="center">
               {hasBlockingErrors && (
@@ -1279,110 +1173,56 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
               )}
             </Box>
           )}
-        </Box>
-        <Box display="flex" gap={1}>
-          <Button onClick={onClose} variant="outlined" startIcon={<CloseIcon />}>
-            Cerrar
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            startIcon={<SendIcon />}
+            disabled={hasBlockingErrors}
+          >
+            {hasBlockingErrors ? 'Corregir Errores' : 'Completar Visita'}
           </Button>
-          {activities.length > 0 && (
-            <>
-              <Button
-                onClick={() => setShowValuesDialog(true)}
-                variant="outlined"
-                startIcon={<CheckCircleIcon />}
-                disabled={!validatedFormData}
-              >
-                Ver Objeto
-              </Button>
-              <Button
-                onClick={handleSubmit}
-                variant="contained"
-                startIcon={<SendIcon />}
-              >
-                Validar Formulario
-              </Button>
-            </>
-          )}
         </Box>
-      </DialogActions>
-      
-      {/* Toast de validación exitosa */}
-      <Snackbar
-        open={showSuccessToast}
-        autoHideDuration={5000}
-        onClose={() => setShowSuccessToast(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert
-          onClose={() => setShowSuccessToast(false)}
-          severity="success"
-          sx={{ width: '100%', minWidth: 300 }}
-          icon={<CheckCircleIcon />}
-          action={
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => {
-                setShowSuccessToast(false);
-                setShowValuesDialog(true);
-              }}
-              sx={{ 
-                fontWeight: 600,
-                textTransform: 'none',
-                '&:hover': {
-                  bgcolor: 'rgba(255, 255, 255, 0.1)'
-                }
-              }}
-            >
-              Ver Objeto
-            </Button>
-          }
-        >
-          Formulario válido! Todos los campos requeridos están completos y no hay errores de validación.
-        </Alert>
-      </Snackbar>
+      </Box>
 
-      {/* Dialog para mostrar valores validados */}
+      {/* Diálogo para editar aclaración/descripción */}
       <Dialog
-        open={showValuesDialog}
-        onClose={() => setShowValuesDialog(false)}
-        maxWidth="md"
+        open={descriptionDialogOpen}
+        onClose={handleCloseDescriptionDialog}
+        maxWidth="sm"
         fullWidth
       >
         <DialogTitle>
-          <Box display="flex" alignItems="center" gap={1}>
-            <CheckCircleIcon color="success" />
-            <Typography variant="h6">Valores del Formulario</Typography>
-          </Box>
+          Aclaración para IA
+          {editingActivityId && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {activities.find(a => a.id === editingActivityId)?.name}
+            </Typography>
+          )}
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Aquí están los valores completados en el formulario:
-          </Typography>
-          <Box
-            sx={{
-              mt: 2,
-              p: 2,
-              bgcolor: 'grey.50',
-              borderRadius: 1,
-              border: '1px solid',
-              borderColor: 'grey.300',
-              maxHeight: '60vh',
-              overflow: 'auto',
-            }}
-          >
-            <pre style={{ margin: 0, fontSize: '0.875rem', fontFamily: 'monospace' }}>
-              {validatedFormData ? JSON.stringify(validatedFormData, null, 2) : 'Cargando...'}
-            </pre>
-          </Box>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Aclaración"
+            fullWidth
+            multiline
+            rows={4}
+            value={descriptionText}
+            onChange={(e) => setDescriptionText(e.target.value)}
+            placeholder="Ingrese una aclaración o descripción adicional para ayudar a la IA a entender mejor este campo..."
+            helperText="Esta aclaración se guardará en el campo description y ayudará a la IA a procesar mejor los datos."
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowValuesDialog(false)}>
-            Cerrar
+          <Button onClick={handleCloseDescriptionDialog}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSaveDescription} variant="contained">
+            Guardar
           </Button>
         </DialogActions>
       </Dialog>
-    </Dialog>
+    </Box>
   );
 };
 
