@@ -1,5 +1,6 @@
 import type { Protocol, ProtocolFormData, ApiResponse, PaginatedResponse } from '../types';
 import apiService from './api';
+import axios from 'axios';
 
 class ProtocolService {
   // Obtener todos los protocolos (paginado)
@@ -80,6 +81,26 @@ class ProtocolService {
     return apiService.put<ApiResponse<Protocol>>(`/protocols/${protocolId}/visits/order`, {
       visitsOrder,
     });
+  }
+
+  // Generar historia clínica con IA
+  async generateClinicalHistory(protocolId: string, visitId: string, visitData: any): Promise<Blob> {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+    const token = localStorage.getItem('authToken');
+    
+    const response = await axios.post(
+      `${API_BASE_URL}/protocols/${protocolId}/visits/${visitId}/generate-clinical-history`,
+      { visitData },
+      {
+        responseType: 'blob',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      }
+    );
+    
+    return response.data;
   }
 
   // ==========================================
