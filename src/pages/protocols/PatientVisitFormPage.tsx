@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Paper,
@@ -15,29 +15,37 @@ import {
   Step,
   StepLabel,
   TextField,
-} from '@mui/material';
+} from "@mui/material";
 import {
   ArrowBack as BackIcon,
   Download as DownloadIcon,
-} from '@mui/icons-material';
-import protocolService from '../../services/protocolService';
-import type { Protocol, Visit } from '../../types';
-import { PatientVisitForm } from '../../components/protocols/PatientVisitForm';
+  Description as DescriptionIcon,
+} from "@mui/icons-material";
+import protocolService from "../../services/protocolService";
+import type { Protocol, Visit } from "../../types";
+import { PatientVisitForm } from "../../components/protocols/PatientVisitForm";
 
-const steps = ['Seleccionar Protocolo y Visita', 'Completar Formulario', 'Revisar y Descargar'];
+const steps = [
+  "Seleccionar Protocolo y Visita",
+  "Completar Formulario",
+  "Revisar y Descargar",
+];
 
 export const PatientVisitFormPage: React.FC = () => {
   const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
-  const [selectedProtocolId, setSelectedProtocolId] = useState<string>('');
-  const [selectedVisitId, setSelectedVisitId] = useState<string>('');
-  const [selectedProtocol, setSelectedProtocol] = useState<Protocol | null>(null);
+  const [selectedProtocolId, setSelectedProtocolId] = useState<string>("");
+  const [selectedVisitId, setSelectedVisitId] = useState<string>("");
+  const [selectedProtocol, setSelectedProtocol] = useState<Protocol | null>(
+    null
+  );
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
-  const [patientId, setPatientId] = useState<string>('');
+  const [patientId, setPatientId] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [visitData, setVisitData] = useState<any>(null);
+  const [generatingHistory, setGeneratingHistory] = useState(false);
 
   useEffect(() => {
     loadProtocols();
@@ -51,7 +59,9 @@ export const PatientVisitFormPage: React.FC = () => {
 
   useEffect(() => {
     if (selectedProtocol && selectedVisitId) {
-      const visit = selectedProtocol.visits.find(v => v.id === selectedVisitId);
+      const visit = selectedProtocol.visits.find(
+        (v) => v.id === selectedVisitId
+      );
       setSelectedVisit(visit || null);
     }
   }, [selectedProtocol, selectedVisitId]);
@@ -59,11 +69,11 @@ export const PatientVisitFormPage: React.FC = () => {
   const loadProtocols = async () => {
     try {
       setLoading(true);
-      const response = await protocolService.getProtocols(1, 100, 'active');
+      const response = await protocolService.getProtocols(1, 100, "active");
       setProtocols(response.data);
     } catch (err) {
-      console.error('Error al cargar protocolos:', err);
-      setError('Error al cargar los protocolos. Por favor intenta nuevamente.');
+      console.error("Error al cargar protocolos:", err);
+      setError("Error al cargar los protocolos. Por favor intenta nuevamente.");
     } finally {
       setLoading(false);
     }
@@ -75,8 +85,8 @@ export const PatientVisitFormPage: React.FC = () => {
       const response = await protocolService.getProtocolById(protocolId);
       setSelectedProtocol(response.data);
     } catch (err) {
-      console.error('Error al cargar protocolo:', err);
-      setError('Error al cargar el protocolo. Por favor intenta nuevamente.');
+      console.error("Error al cargar protocolo:", err);
+      setError("Error al cargar el protocolo. Por favor intenta nuevamente.");
     } finally {
       setLoading(false);
     }
@@ -85,14 +95,14 @@ export const PatientVisitFormPage: React.FC = () => {
   const handleNext = () => {
     if (activeStep === 0) {
       if (!selectedProtocolId || !selectedVisitId) {
-        setError('Por favor selecciona un protocolo y una visita');
+        setError("Por favor selecciona un protocolo y una visita");
         return;
       }
       if (!patientId.trim()) {
-        setError('Por favor ingresa un ID de paciente');
+        setError("Por favor ingresa un ID de paciente");
         return;
       }
-      setError('');
+      setError("");
     }
     setActiveStep(activeStep + 1);
   };
@@ -113,25 +123,63 @@ export const PatientVisitFormPage: React.FC = () => {
     if (!visitData) return;
 
     const dataStr = JSON.stringify(visitData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    link.download = `visita_${selectedVisit?.name || 'visita'}_${patientId}_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `visita_${selectedVisit?.name || "visita"}_${patientId}_${
+      new Date().toISOString().split("T")[0]
+    }.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
+  const handleGenerateClinicalHistory = async () => {
+    if (!visitData || !selectedProtocolId || !selectedVisitId) return;
+
+    try {
+      setGeneratingHistory(true);
+      setError("");
+
+      const blob = await protocolService.generateClinicalHistory(
+        selectedProtocolId,
+        selectedVisitId,
+        visitData
+      );
+
+      // Descargar el PDF
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const fileName = `historia-clinica-${
+        selectedProtocol?.code || "protocolo"
+      }-${selectedVisit?.name.replace(/\s+/g, "-") || "visita"}.pdf`;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error("Error al generar historia clínica:", err);
+      setError(
+        err.response?.data?.error ||
+          "Error al generar la historia clínica. Por favor intenta nuevamente."
+      );
+    } finally {
+      setGeneratingHistory(false);
+    }
+  };
+
   const getVisitTypeLabel = (type: string) => {
     switch (type) {
-      case 'presencial':
-        return 'Presencial';
-      case 'telefonica':
-        return 'Telefónica';
-      case 'no_programada':
-        return 'No Programada';
+      case "presencial":
+        return "Presencial";
+      case "telefonica":
+        return "Telefónica";
+      case "no_programada":
+        return "No Programada";
       default:
         return type;
     }
@@ -139,7 +187,12 @@ export const PatientVisitFormPage: React.FC = () => {
 
   if (loading && protocols.length === 0) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="400px"
+      >
         <CircularProgress />
       </Box>
     );
@@ -148,7 +201,10 @@ export const PatientVisitFormPage: React.FC = () => {
   return (
     <Box>
       <Box display="flex" alignItems="center" gap={2} mb={3}>
-        <Button onClick={() => navigate('/doctor/dashboard')} startIcon={<BackIcon />}>
+        <Button
+          onClick={() => navigate("/doctor/dashboard")}
+          startIcon={<BackIcon />}
+        >
           Volver
         </Button>
         <Typography variant="h4" fontWeight="bold">
@@ -165,7 +221,7 @@ export const PatientVisitFormPage: React.FC = () => {
       </Stepper>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError("")}>
           {error}
         </Alert>
       )}
@@ -176,7 +232,7 @@ export const PatientVisitFormPage: React.FC = () => {
             Selecciona el Protocolo y la Visita
           </Typography>
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <TextField
               label="ID del Paciente"
               value={patientId}
@@ -192,7 +248,7 @@ export const PatientVisitFormPage: React.FC = () => {
                 value={selectedProtocolId}
                 onChange={(e) => {
                   setSelectedProtocolId(e.target.value);
-                  setSelectedVisitId('');
+                  setSelectedVisitId("");
                   setSelectedVisit(null);
                 }}
                 label="Protocolo"
@@ -217,7 +273,9 @@ export const PatientVisitFormPage: React.FC = () => {
                     .sort((a, b) => a.order - b.order)
                     .map((visit) => (
                       <MenuItem key={visit.id} value={visit.id}>
-                        {visit.order}. {visit.name} ({getVisitTypeLabel(visit.type)}) - {visit.activities.length} campos
+                        {visit.order}. {visit.name} (
+                        {getVisitTypeLabel(visit.type)}) -{" "}
+                        {visit.activities.length} campos
                       </MenuItem>
                     ))}
                 </Select>
@@ -246,7 +304,13 @@ export const PatientVisitFormPage: React.FC = () => {
           </Box>
 
           <Box display="flex" justifyContent="flex-end" gap={2} sx={{ mt: 4 }}>
-            <Button onClick={handleNext} variant="contained" disabled={!selectedProtocolId || !selectedVisitId || !patientId.trim()}>
+            <Button
+              onClick={handleNext}
+              variant="contained"
+              disabled={
+                !selectedProtocolId || !selectedVisitId || !patientId.trim()
+              }
+            >
               Siguiente
             </Button>
           </Box>
@@ -270,43 +334,71 @@ export const PatientVisitFormPage: React.FC = () => {
           </Typography>
 
           <Alert severity="success" sx={{ mb: 3 }}>
-            El formulario se completó correctamente. Puedes revisar el JSON generado y descargarlo.
+            El formulario se completó correctamente. Puedes revisar el JSON
+            generado y descargarlo.
             <strong> No se guardó nada en la base de datos.</strong>
           </Alert>
 
           <Box
             sx={{
               p: 2,
-              bgcolor: 'grey.50',
+              bgcolor: "grey.50",
               borderRadius: 1,
-              border: '1px solid',
-              borderColor: 'grey.300',
-              maxHeight: '60vh',
-              overflow: 'auto',
+              border: "1px solid",
+              borderColor: "grey.300",
+              maxHeight: "60vh",
+              overflow: "auto",
               mb: 3,
             }}
           >
-            <pre style={{ margin: 0, fontSize: '0.875rem', fontFamily: 'monospace' }}>
+            <pre
+              style={{
+                margin: 0,
+                fontSize: "0.875rem",
+                fontFamily: "monospace",
+              }}
+            >
               {JSON.stringify(visitData, null, 2)}
             </pre>
           </Box>
 
           <Box display="flex" justifyContent="space-between" gap={2}>
-            <Button onClick={handleBack} variant="outlined" startIcon={<BackIcon />}>
+            <Button
+              onClick={handleBack}
+              variant="outlined"
+              startIcon={<BackIcon />}
+            >
               Volver
             </Button>
-            <Button
-              onClick={handleDownload}
-              variant="contained"
-              startIcon={<DownloadIcon />}
-              color="success"
-            >
-              Descargar JSON
-            </Button>
+            <Box display="flex" gap={2}>
+              <Button
+                onClick={handleDownload}
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+              >
+                Descargar JSON
+              </Button>
+              <Button
+                onClick={handleGenerateClinicalHistory}
+                variant="contained"
+                startIcon={
+                  generatingHistory ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <DescriptionIcon />
+                  )
+                }
+                color="primary"
+                disabled={generatingHistory}
+              >
+                {generatingHistory
+                  ? "Generando..."
+                  : "Generar Historia Clínica"}
+              </Button>
+            </Box>
           </Box>
         </Paper>
       )}
     </Box>
   );
 };
-
