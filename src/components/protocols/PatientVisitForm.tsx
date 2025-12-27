@@ -1087,9 +1087,6 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
         <Typography variant="body2" color="text.secondary" gutterBottom>
           Protocolo: {protocolName}
         </Typography>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
-          ID Paciente: {patientId}
-        </Typography>
         <Alert severity="info" sx={{ mt: 2 }}>
           Complete todos los campos requeridos. Los datos no se guardarán en la base de datos, solo se generará un archivo JSON para descargar.
         </Alert>

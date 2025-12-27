@@ -41,7 +41,6 @@ export const PatientVisitFormPage: React.FC = () => {
     null
   );
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
-  const [patientId, setPatientId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [visitData, setVisitData] = useState<any>(null);
@@ -98,10 +97,6 @@ export const PatientVisitFormPage: React.FC = () => {
         setError("Por favor selecciona un protocolo y una visita");
         return;
       }
-      if (!patientId.trim()) {
-        setError("Por favor ingresa un ID de paciente");
-        return;
-      }
       setError("");
     }
     setActiveStep(activeStep + 1);
@@ -127,7 +122,7 @@ export const PatientVisitFormPage: React.FC = () => {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `visita_${selectedVisit?.name || "visita"}_${patientId}_${
+    link.download = `visita_${selectedVisit?.name || "visita"}_${
       new Date().toISOString().split("T")[0]
     }.json`;
     document.body.appendChild(link);
@@ -233,15 +228,6 @@ export const PatientVisitFormPage: React.FC = () => {
           </Typography>
 
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <TextField
-              label="ID del Paciente"
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              fullWidth
-              required
-              helperText="Ingresa un identificador único para el paciente (no se guardará en la base de datos)"
-            />
-
             <FormControl fullWidth required>
               <InputLabel>Protocolo</InputLabel>
               <Select
@@ -308,7 +294,7 @@ export const PatientVisitFormPage: React.FC = () => {
               onClick={handleNext}
               variant="contained"
               disabled={
-                !selectedProtocolId || !selectedVisitId || !patientId.trim()
+                !selectedProtocolId || !selectedVisitId
               }
             >
               Siguiente
@@ -321,7 +307,7 @@ export const PatientVisitFormPage: React.FC = () => {
         <PatientVisitForm
           visit={selectedVisit}
           protocolName={selectedProtocol.name}
-          patientId={patientId}
+          patientId=""
           onComplete={handleFormComplete}
           onCancel={handleBack}
         />
