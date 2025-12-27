@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Box,
   Paper,
@@ -11,6 +11,7 @@ import {
 import {
   LocalHospital as HospitalIcon,
   AddCircle as AddIcon,
+  UploadFile as UploadIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 export const DoctorDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <Box>
@@ -61,15 +63,53 @@ export const DoctorDashboardPage: React.FC = () => {
             <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
               Complete el formulario de visita para un paciente seleccionando el protocolo y la visita correspondiente.
             </Typography>
-            <Button
-              variant="contained"
-              size="large"
-              startIcon={<AddIcon />}
-              onClick={() => navigate('/patient-visits/new')}
-              sx={{ py: 1.5, px: 4, fontSize: '1.1rem' }}
-            >
-              Crear Visita
-            </Button>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<AddIcon />}
+                onClick={() => navigate('/patient-visits/new')}
+                sx={{ py: 1.5, px: 4, fontSize: '1.1rem' }}
+              >
+                Crear Visita
+              </Button>
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={<UploadIcon />}
+                onClick={() => fileInputRef.current?.click()}
+                sx={{ py: 1.5, px: 4, fontSize: '1.1rem' }}
+              >
+                Cargar desde JSON
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      try {
+                        const jsonData = JSON.parse(event.target?.result as string);
+                        // Navigate to visit creation page with the JSON data
+                        navigate('/patient-visits/new', { state: { importedData: jsonData } });
+                      } catch (error) {
+                        alert('Error al leer el archivo JSON. Por favor verifica que el archivo sea válido.');
+                        console.error('Error parsing JSON:', error);
+                      }
+                    };
+                    reader.readAsText(file);
+                  }
+                  // Reset input so the same file can be selected again
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+              />
+            </Box>
           </Paper>
 
           {/* Estado de cuenta */}

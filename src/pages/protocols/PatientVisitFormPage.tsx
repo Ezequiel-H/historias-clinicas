@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Box,
   Paper,
@@ -14,7 +14,6 @@ import {
   Stepper,
   Step,
   StepLabel,
-  TextField,
 } from "@mui/material";
 import {
   ArrowBack as BackIcon,
@@ -33,6 +32,7 @@ const steps = [
 
 export const PatientVisitFormPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeStep, setActiveStep] = useState(0);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [selectedProtocolId, setSelectedProtocolId] = useState<string>("");
@@ -45,10 +45,16 @@ export const PatientVisitFormPage: React.FC = () => {
   const [error, setError] = useState("");
   const [visitData, setVisitData] = useState<any>(null);
   const [generatingHistory, setGeneratingHistory] = useState(false);
+  const [importedData, setImportedData] = useState<any>(null);
 
   useEffect(() => {
-    loadProtocols();
-  }, []);
+    // Check if we have imported data from location state
+    const imported = (location.state as any)?.importedData;
+    if (imported) {
+      setImportedData(imported);
+    }
+    loadProtocols(imported);
+  }, [location.state]);
 
   useEffect(() => {
     if (selectedProtocolId) {
@@ -65,11 +71,49 @@ export const PatientVisitFormPage: React.FC = () => {
     }
   }, [selectedProtocol, selectedVisitId]);
 
-  const loadProtocols = async () => {
+  const loadProtocols = async (importedDataToProcess?: any) => {
     try {
       setLoading(true);
       const response = await protocolService.getProtocols(1, 100, "active");
       setProtocols(response.data);
+      
+      // If we have imported data, try to find matching protocol and visit
+      const dataToProcess = importedDataToProcess || importedData;
+      if (dataToProcess) {
+        const protocolName = dataToProcess.protocolName;
+        const visitName = dataToProcess.visitName;
+        
+        if (protocolName && visitName) {
+          // Find protocol by name
+          const matchingProtocol = response.data.find(
+            (p: Protocol) => p.name === protocolName
+          );
+          
+          if (matchingProtocol) {
+            setSelectedProtocolId(matchingProtocol.id);
+            // Load the protocol to get visits
+            const protocolResponse = await protocolService.getProtocolById(matchingProtocol.id);
+            const protocol = protocolResponse.data;
+            setSelectedProtocol(protocol);
+            
+            // Find visit by name
+            const matchingVisit = protocol.visits.find(
+              (v: Visit) => v.name === visitName
+            );
+            
+            if (matchingVisit) {
+              setSelectedVisitId(matchingVisit.id);
+              setSelectedVisit(matchingVisit);
+              // Auto-advance to form step
+              setActiveStep(1);
+            } else {
+              setError(`No se encontró la visita "${visitName}" en el protocolo "${protocolName}".`);
+            }
+          } else {
+            setError(`No se encontró el protocolo "${protocolName}".`);
+          }
+        }
+      }
     } catch (err) {
       console.error("Error al cargar protocolos:", err);
       setError("Error al cargar los protocolos. Por favor intenta nuevamente.");
@@ -122,9 +166,65 @@ export const PatientVisitFormPage: React.FC = () => {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `visita_${selectedVisit?.name || "visita"}_${
-      new Date().toISOString().split("T")[0]
-    }.json`;
+    
+    // Extract visitName
+    const visitName = visitData.visitName || selectedVisit?.name || "visita";
+    
+    // Find "Nombre y Apellido" field from activities
+    let nombreApellido = "";
+    if (visitData.activities) {
+      const nombreApellidoActivity = visitData.activities.find(
+        (activity: any) => activity.name === "Nombre y Apellido"
+      );
+      if (nombreApellidoActivity) {
+        nombreApellido = nombreApellidoActivity.value || "";
+      }
+    }
+    
+    // Find "Fecha de la Visita" field from activities
+    let fechaVisita = "";
+    if (visitData.activities && selectedVisit) {
+      // First try to find by isVisitDate flag
+      const visitDateActivityId = selectedVisit.activities.find(
+        (activity: any) => activity.isVisitDate === true
+      )?.id;
+      
+      if (visitDateActivityId) {
+        const visitDateActivity = visitData.activities.find(
+          (activity: any) => activity.id === visitDateActivityId
+        );
+        if (visitDateActivity) {
+          fechaVisita = visitDateActivity.date || visitDateActivity.value || "";
+        }
+      } else {
+        // Fallback: search by name
+        const fechaVisitaActivity = visitData.activities.find(
+          (activity: any) => activity.name === "Fecha de la Visita"
+        );
+        if (fechaVisitaActivity) {
+          fechaVisita = fechaVisitaActivity.date || fechaVisitaActivity.value || "";
+        }
+      }
+    }
+    
+    // Build filename: visitName - Nombre y Apellido - Fecha de la Visita
+    const filenameParts = [visitName];
+    if (nombreApellido) {
+      filenameParts.push(nombreApellido);
+    }
+    if (fechaVisita) {
+      // Format date if needed (remove time if present)
+      const dateOnly = fechaVisita.split("T")[0];
+      filenameParts.push(dateOnly);
+    }
+    
+    // Sanitize filename (remove invalid characters for filenames)
+    const sanitizedFilename = filenameParts
+      .join("-")
+      .replace(/[<>:"/\\|?*]/g, "") // Remove invalid filename characters
+      .trim();
+    
+    link.download = `${sanitizedFilename || "visita"}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -310,6 +410,7 @@ export const PatientVisitFormPage: React.FC = () => {
           patientId=""
           onComplete={handleFormComplete}
           onCancel={handleBack}
+          initialData={importedData}
         />
       )}
 
