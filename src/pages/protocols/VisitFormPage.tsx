@@ -28,7 +28,6 @@ export const VisitFormPage: React.FC = () => {
 
   const [name, setName] = useState('');
   const [type, setType] = useState<'presencial' | 'telefonica' | 'no_programada'>('presencial');
-  const [order, setOrder] = useState(1);
   const [allVisits, setAllVisits] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
@@ -72,10 +71,6 @@ export const VisitFormPage: React.FC = () => {
       if (visit) {
         setName(visit.name);
         setType(visit.type);
-        // Calcular el orden basado en la posición en la lista ordenada
-        const sortedVisits = [...protocol.visits].sort((a, b) => a.order - b.order);
-        const visitIndex = sortedVisits.findIndex((v) => v.id === visitId);
-        setOrder(visitIndex >= 0 ? visitIndex + 1 : visit.order);
       } else {
         setError('Visita no encontrada');
       }

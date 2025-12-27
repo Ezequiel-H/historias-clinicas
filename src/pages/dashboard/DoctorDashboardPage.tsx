@@ -7,7 +7,6 @@ import {
   CardContent,
   Button,
   Alert,
-  Grid,
 } from '@mui/material';
 import {
   Assignment as AssignmentIcon,
@@ -37,11 +36,10 @@ export const DoctorDashboardPage: React.FC = () => {
       {user?.isActive && (
         <>
           {/* Información del médico */}
-          <Grid container spacing={3} sx={{ mb: 3 }}>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, mb: 3 }}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     <HospitalIcon sx={{ mr: 2, fontSize: 40, color: 'primary.main' }} />
                     <Box>
                       <Typography variant="h6" gutterBottom>
@@ -57,12 +55,10 @@ export const DoctorDashboardPage: React.FC = () => {
                   </Box>
                 </CardContent>
               </Card>
-            </Grid>
 
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     <AssignmentIcon sx={{ mr: 2, fontSize: 40, color: 'success.main' }} />
                     <Box>
                       <Typography variant="h6" gutterBottom>
@@ -78,49 +74,42 @@ export const DoctorDashboardPage: React.FC = () => {
                   </Box>
                 </CardContent>
               </Card>
-            </Grid>
-          </Grid>
+          </Box>
 
           {/* Acciones rápidas */}
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
               Acciones Rápidas
             </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6} md={4}>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  startIcon={<AssignmentIcon />}
-                  onClick={() => navigate('/protocols')}
-                  sx={{ py: 2 }}
-                >
-                  Ver Protocolos
-                </Button>
-              </Grid>
-              <Grid item xs={12} sm={6} md={4}>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  startIcon={<CheckIcon />}
-                  onClick={() => navigate('/patient-visits/new')}
-                  sx={{ py: 2 }}
-                >
-                  Cargar Visita
-                </Button>
-              </Grid>
-              <Grid item xs={12} sm={6} md={4}>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  startIcon={<TimeIcon />}
-                  onClick={() => navigate('/protocols')}
-                  sx={{ py: 2 }}
-                >
-                  Historial
-                </Button>
-              </Grid>
-            </Grid>
+            <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' } }}>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<AssignmentIcon />}
+                onClick={() => navigate('/protocols')}
+                sx={{ py: 2 }}
+              >
+                Ver Protocolos
+              </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<CheckIcon />}
+                onClick={() => navigate('/patient-visits/new')}
+                sx={{ py: 2 }}
+              >
+                Cargar Visita
+              </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<TimeIcon />}
+                onClick={() => navigate('/protocols')}
+                sx={{ py: 2 }}
+              >
+                Historial
+              </Button>
+            </Box>
           </Paper>
 
           {/* Estado de cuenta */}

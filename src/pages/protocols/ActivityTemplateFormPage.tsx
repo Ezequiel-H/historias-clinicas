@@ -9,16 +9,9 @@ import {
   TextField,
   Alert,
   CircularProgress,
-  Checkbox,
-  FormControlLabel,
   Card,
   CardContent,
   Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Divider,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -27,7 +20,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
-import type { Activity, ActivityTemplate, Omit } from '../../types';
+import type { Activity } from '../../types';
 import activityTemplateService from '../../services/activityTemplateService';
 
 export const ActivityTemplateFormPage: React.FC = () => {
@@ -229,7 +222,7 @@ export const ActivityTemplateFormPage: React.FC = () => {
       setLoading(true);
       setError('');
 
-      const templateData: Omit<ActivityTemplate, 'id' | 'createdAt' | 'updatedAt'> = {
+      const templateData = {
         name: templateFormData.name.trim(),
         description: templateFormData.description.trim() || undefined,
         activities: activities.map((activity, index) => ({

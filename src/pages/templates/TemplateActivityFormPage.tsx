@@ -22,11 +22,6 @@ import {
   Chip,
   CircularProgress,
   Autocomplete,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Snackbar,
   Table,
   TableBody,
   TableCell,
@@ -173,8 +168,6 @@ export const TemplateActivityFormPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
-  const [showValuesDialog, setShowValuesDialog] = useState(false);
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
   const selectedFieldType = FIELD_TYPES.find(ft => ft.value === formData.fieldType);
 

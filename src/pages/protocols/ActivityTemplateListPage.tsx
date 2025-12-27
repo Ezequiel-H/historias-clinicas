@@ -16,7 +16,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   List,
   ListItem,
   ListItemText,
@@ -28,7 +27,7 @@ import {
   Delete as DeleteIcon,
   ContentCopy as CopyIcon,
 } from '@mui/icons-material';
-import type { ActivityTemplate } from '../../types';
+import type { ActivityTemplate, Activity } from '../../types';
 import activityTemplateService from '../../services/activityTemplateService';
 
 export const ActivityTemplateListPage: React.FC = () => {
@@ -184,7 +183,7 @@ export const ActivityTemplateListPage: React.FC = () => {
                       </Typography>
                     )}
                     <Box display="flex" gap={1} flexWrap="wrap" sx={{ mt: 2 }}>
-                      {template.activities.slice(0, 5).map((activity, index) => (
+                      {template.activities.slice(0, 5).map((activity: Activity, index: number) => (
                         <Chip
                           key={index}
                           label={`${index + 1}. ${activity.name} (${getFieldTypeLabel(activity.fieldType)})`}
@@ -272,7 +271,7 @@ export const ActivityTemplateListPage: React.FC = () => {
             Campos incluidos ({templateToView?.activities.length}):
           </Typography>
           <List>
-            {templateToView?.activities.map((activity, index) => (
+            {templateToView?.activities.map((activity: Activity, index: number) => (
               <ListItem key={index} divider>
                 <ListItemText
                   primary={`${index + 1}. ${activity.name}`}

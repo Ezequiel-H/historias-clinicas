@@ -20,8 +20,6 @@ import {
   MenuItem,
   FormControlLabel,
   Checkbox,
-  Radio,
-  RadioGroup,
   Alert,
   Divider,
 } from '@mui/material';
@@ -233,9 +231,6 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
   const needsOptions = formData.fieldType === 'select_single';
   const needsUnit = formData.fieldType === 'number_simple';
   const needsMedicationConfig = formData.fieldType === 'medication_tracking';
-  
-  // Calcular y mostrar dosis diaria esperada cuando cambia la configuración
-  const expectedDailyDose = needsMedicationConfig ? calculateExpectedDailyDose(medicationConfig) : undefined;
 
   return (
     <Dialog open={true} onClose={onClose} maxWidth="md" fullWidth>

@@ -209,6 +209,16 @@ export interface TemplateFormData {
   activities?: Activity[];
 }
 
+// Tipos para Plantillas de Actividades (Activity Templates)
+export interface ActivityTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  activities: Activity[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Tipos para respuestas de API
 export interface ApiResponse<T> {
   data: T;
