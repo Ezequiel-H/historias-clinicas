@@ -83,14 +83,38 @@ class ProtocolService {
     });
   }
 
+  // Previsualizar texto de historia clínica con IA (sin generar PDF)
+  async previewClinicalHistory(protocolId: string, visitId: string, visitData: any): Promise<string> {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+    const token = localStorage.getItem('authToken');
+    
+    const response = await axios.post(
+      `${API_BASE_URL}/protocols/${protocolId}/visits/${visitId}/preview-clinical-history`,
+      { visitData },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      }
+    );
+    
+    return response.data.data.clinicalHistoryText;
+  }
+
   // Generar historia clínica con IA
-  async generateClinicalHistory(protocolId: string, visitId: string, visitData: any): Promise<Blob> {
+  async generateClinicalHistory(
+    protocolId: string, 
+    visitId: string, 
+    visitData: any, 
+    clinicalHistoryText?: string
+  ): Promise<Blob> {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
     const token = localStorage.getItem('authToken');
     
     const response = await axios.post(
       `${API_BASE_URL}/protocols/${protocolId}/visits/${visitId}/generate-clinical-history`,
-      { visitData },
+      { visitData, clinicalHistoryText },
       {
         responseType: 'blob',
         headers: {

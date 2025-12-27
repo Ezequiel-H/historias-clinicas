@@ -14,11 +14,17 @@ import {
   Stepper,
   Step,
   StepLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from "@mui/material";
 import {
   ArrowBack as BackIcon,
   Download as DownloadIcon,
   Description as DescriptionIcon,
+  Edit as EditIcon,
 } from "@mui/icons-material";
 import protocolService from "../../services/protocolService";
 import type { Protocol, Visit } from "../../types";
@@ -46,6 +52,10 @@ export const PatientVisitFormPage: React.FC = () => {
   const [visitData, setVisitData] = useState<any>(null);
   const [generatingHistory, setGeneratingHistory] = useState(false);
   const [importedData, setImportedData] = useState<any>(null);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewText, setPreviewText] = useState("");
+  const [editedPreviewText, setEditedPreviewText] = useState("");
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   useEffect(() => {
     // Check if we have imported data from location state
@@ -231,6 +241,33 @@ export const PatientVisitFormPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handlePreviewClinicalHistory = async () => {
+    if (!visitData || !selectedProtocolId || !selectedVisitId) return;
+
+    try {
+      setLoadingPreview(true);
+      setError("");
+
+      const text = await protocolService.previewClinicalHistory(
+        selectedProtocolId,
+        selectedVisitId,
+        visitData
+      );
+
+      setPreviewText(text);
+      setEditedPreviewText(text);
+      setPreviewDialogOpen(true);
+    } catch (err: any) {
+      console.error("Error al previsualizar historia clínica:", err);
+      setError(
+        err.response?.data?.error ||
+          "Error al previsualizar la historia clínica. Por favor intenta nuevamente."
+      );
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
   const handleGenerateClinicalHistory = async () => {
     if (!visitData || !selectedProtocolId || !selectedVisitId) return;
 
@@ -238,10 +275,14 @@ export const PatientVisitFormPage: React.FC = () => {
       setGeneratingHistory(true);
       setError("");
 
+      // Usar el texto editado si existe, si no usar el original
+      const textToUse = editedPreviewText.trim() || previewText;
+
       const blob = await protocolService.generateClinicalHistory(
         selectedProtocolId,
         selectedVisitId,
-        visitData
+        visitData,
+        textToUse
       );
 
       // Descargar el PDF
@@ -256,6 +297,9 @@ export const PatientVisitFormPage: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+
+      // Cerrar el diálogo después de generar el PDF
+      setPreviewDialogOpen(false);
     } catch (err: any) {
       console.error("Error al generar historia clínica:", err);
       setError(
@@ -265,6 +309,12 @@ export const PatientVisitFormPage: React.FC = () => {
     } finally {
       setGeneratingHistory(false);
     }
+  };
+
+  const handleClosePreviewDialog = () => {
+    setPreviewDialogOpen(false);
+    setPreviewText("");
+    setEditedPreviewText("");
   };
 
   const getVisitTypeLabel = (type: string) => {
@@ -466,26 +516,87 @@ export const PatientVisitFormPage: React.FC = () => {
                 Descargar JSON
               </Button>
               <Button
-                onClick={handleGenerateClinicalHistory}
+                onClick={handlePreviewClinicalHistory}
                 variant="contained"
                 startIcon={
-                  generatingHistory ? (
+                  loadingPreview ? (
                     <CircularProgress size={20} />
                   ) : (
                     <DescriptionIcon />
                   )
                 }
                 color="primary"
-                disabled={generatingHistory}
+                disabled={loadingPreview}
               >
-                {generatingHistory
-                  ? "Generando..."
+                {loadingPreview
+                  ? "Generando Vista Previa..."
                   : "Generar Historia Clínica"}
               </Button>
             </Box>
           </Box>
         </Paper>
       )}
+
+      {/* Diálogo de previsualización y edición */}
+      <Dialog
+        open={previewDialogOpen}
+        onClose={handleClosePreviewDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            minHeight: '70vh',
+          },
+        }}
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <EditIcon />
+            <Typography variant="h6">
+              Vista Previa de Historia Clínica
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Revisa y edita el texto generado por la IA antes de generar el PDF.
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            rows={20}
+            value={editedPreviewText}
+            onChange={(e) => setEditedPreviewText(e.target.value)}
+            variant="outlined"
+            sx={{
+              '& .MuiInputBase-root': {
+                fontFamily: 'monospace',
+                fontSize: '0.875rem',
+              },
+            }}
+            placeholder="El texto de la historia clínica aparecerá aquí..."
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleClosePreviewDialog} variant="outlined">
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleGenerateClinicalHistory}
+            variant="contained"
+            startIcon={
+              generatingHistory ? (
+                <CircularProgress size={20} />
+              ) : (
+                <DescriptionIcon />
+              )
+            }
+            disabled={generatingHistory || !editedPreviewText.trim()}
+          >
+            {generatingHistory ? "Generando PDF..." : "Generar PDF"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
