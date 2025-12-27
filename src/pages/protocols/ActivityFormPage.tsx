@@ -145,6 +145,7 @@ export const ActivityFormPage: React.FC = () => {
     repeatCount: 3,
     datetimeIncludeDate: true, // Por defecto, incluir fecha en datetime
     datetimeIncludeTime: false, // Por defecto, no incluir hora en datetime
+    isVisitDate: false, // Si true, este campo representa la fecha de la visita
     requireDate: false,
     requireTime: false,
     requireDatePerMeasurement: true, // Por defecto, fecha por cada medición
@@ -310,6 +311,7 @@ export const ActivityFormPage: React.FC = () => {
           repeatCount: activity.repeatCount || 3,
           datetimeIncludeDate: datetimeIncludeDate,
           datetimeIncludeTime: datetimeIncludeTime,
+          isVisitDate: activity.isVisitDate || false,
           requireDate: activity.requireDate || false,
           requireTime: activity.requireTime || false,
           requireDatePerMeasurement: activity.requireDatePerMeasurement !== undefined ? activity.requireDatePerMeasurement : true,
@@ -489,6 +491,10 @@ export const ActivityFormPage: React.FC = () => {
     if (formData.fieldType === 'datetime') {
       activityData.datetimeIncludeDate = formData.datetimeIncludeDate;
       activityData.datetimeIncludeTime = formData.datetimeIncludeTime;
+      // Solo incluir isVisitDate si datetimeIncludeDate es true
+      if (formData.datetimeIncludeDate) {
+        activityData.isVisitDate = formData.isVisitDate || false;
+      }
     }
     
     // Agregar campos de fecha y hora (para otras actividades)
@@ -816,6 +822,18 @@ export const ActivityFormPage: React.FC = () => {
                   <Alert severity="warning" sx={{ mt: 1 }}>
                     Debes seleccionar al menos una opción (fecha o hora)
                   </Alert>
+                )}
+                {formData.datetimeIncludeDate && (
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={formData.isVisitDate || false}
+                        onChange={(e) => setFormData({ ...formData, isVisitDate: e.target.checked })}
+                      />
+                    }
+                    label="Usar este campo como fecha de la visita (fecha de hoy)"
+                    sx={{ mt: 1 }}
+                  />
                 )}
               </Box>
             </Box>
