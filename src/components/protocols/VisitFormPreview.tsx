@@ -974,6 +974,11 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             description: activity.description,
           };
 
+          // Solo incluir excludeFromAI si es true
+          if (activity.excludeFromAI === true) {
+            activityObj.excludeFromAI = true;
+          }
+
           // Incluir campos si existen en la actividad
           if (activity.measurementUnit) {
             activityObj.measurementUnit = activity.measurementUnit;

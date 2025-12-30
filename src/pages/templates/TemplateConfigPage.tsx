@@ -283,6 +283,14 @@ export const TemplateConfigPage: React.FC = () => {
                         <Typography variant="h6" component="div">
                           {index + 1}. {activity.name}
                         </Typography>
+                        {activity.excludeFromAI && (
+                          <Chip 
+                            label="Excluido de IA" 
+                            color="warning" 
+                            size="small"
+                            sx={{ fontWeight: 'bold' }}
+                          />
+                        )}
                         {activity.required && (
                           <Chip label="Requerido" color="error" size="small" />
                         )}
