@@ -1,8 +1,9 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import { AuthProvider } from './contexts/AuthContext';
 import { PrivateRoute } from './components/common/PrivateRoute';
 import { RoleBasedRedirect } from './components/common/RoleBasedRedirect';
+import { RoleProtectedRoute } from './components/common/RoleProtectedRoute';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { LoginPage } from './pages/auth/LoginPage';
 import { SignUpPage } from './pages/auth/SignUpPage';
@@ -103,36 +104,141 @@ function App() {
             >
               {/* Dashboard */}
               <Route index element={<RoleBasedRedirect />} />
-              <Route path="dashboard" element={<DashboardPage />} />
+              <Route 
+                path="dashboard" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <DashboardPage />
+                  </RoleProtectedRoute>
+                } 
+              />
               <Route path="doctor/dashboard" element={<DoctorDashboardPage />} />
 
-              {/* Protocolos */}
-              <Route path="protocols" element={<ProtocolListPage />} />
-              <Route path="protocols/new" element={<ProtocolFormPage />} />
-              <Route path="protocols/:id" element={<ProtocolDetailPage />} />
-              <Route path="protocols/:id/edit" element={<ProtocolFormPage />} />
+              {/* Protocolos - Blocked for doctors */}
+              <Route 
+                path="protocols" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <ProtocolListPage />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="protocols/new" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <ProtocolFormPage />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="protocols/:id" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <ProtocolDetailPage />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="protocols/:id/edit" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <ProtocolFormPage />
+                  </RoleProtectedRoute>
+                } 
+              />
               
-              {/* Configuración de Visitas */}
-              <Route path="protocols/:protocolId/visits/new" element={<VisitFormPage />} />
-              <Route path="protocols/:protocolId/visits/:visitId" element={<VisitFormPage />} />
-              <Route path="protocols/:protocolId/visits/:visitId/edit" element={<VisitConfigPage />} />
-              <Route path="protocols/:protocolId/visits/:visitId/activities/:activityId" element={<ActivityFormPage />} />
+              {/* Configuración de Visitas - Blocked for doctors */}
+              <Route 
+                path="protocols/:protocolId/visits/new" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <VisitFormPage />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="protocols/:protocolId/visits/:visitId" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <VisitFormPage />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="protocols/:protocolId/visits/:visitId/edit" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <VisitConfigPage />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="protocols/:protocolId/visits/:visitId/activities/:activityId" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <ActivityFormPage />
+                  </RoleProtectedRoute>
+                } 
+              />
 
-              {/* Carga de Visitas para Médicos */}
-              <Route path="patient-visits/new" element={<PatientVisitFormPage />} />
+              {/* Carga de Visitas para Médicos - Only for doctors */}
+              <Route 
+                path="patient-visits/new" 
+                element={
+                  <RoleProtectedRoute allowedRoles={['doctor']}>
+                    <PatientVisitFormPage />
+                  </RoleProtectedRoute>
+                } 
+              />
 
-              {/* Plantillas (Templates) */}
-              <Route path="templates" element={<TemplateListPage />} />
-              <Route path="templates/new" element={<TemplateConfigPage />} />
-              <Route path="templates/:templateId/edit" element={<TemplateConfigPage />} />
-              <Route path="templates/:templateId/activities/:activityId" element={<TemplateActivityFormPage />} />
+              {/* Plantillas (Templates) - Blocked for doctors */}
+              <Route 
+                path="templates" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <TemplateListPage />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="templates/new" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <TemplateConfigPage />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="templates/:templateId/edit" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <TemplateConfigPage />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="templates/:templateId/activities/:activityId" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <TemplateActivityFormPage />
+                  </RoleProtectedRoute>
+                } 
+              />
 
-              {/* Usuarios */}
-              <Route path="users" element={<UsersPage />} />
+              {/* Usuarios - Blocked for doctors */}
+              <Route 
+                path="users" 
+                element={
+                  <RoleProtectedRoute blockedRoles={['doctor']}>
+                    <UsersPage />
+                  </RoleProtectedRoute>
+                } 
+              />
             </Route>
 
-            {/* Ruta 404 */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            {/* Ruta 404 - Redirect based on role */}
+            <Route path="*" element={<RoleBasedRedirect />} />
           </Routes>
         </AuthProvider>
       </Router>

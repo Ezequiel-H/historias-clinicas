@@ -25,9 +25,199 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
 } from '@mui/icons-material';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { Template, Activity } from '../../types';
 import templateService from '../../services/templateService';
 import { VisitFormPreview } from '../../components/protocols/VisitFormPreview';
+
+// Componente SortableItem para cada Card
+interface SortableItemProps {
+  activity: Activity;
+  index: number;
+  onEdit: (activityId: string) => void;
+  onDelete: (activityId: string) => void;
+  getFieldTypeLabel: (type: string) => string;
+  isReordering: boolean;
+}
+
+const SortableItem: React.FC<SortableItemProps> = ({
+  activity,
+  index,
+  onEdit,
+  onDelete,
+  getFieldTypeLabel,
+  isReordering,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: activity.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Card variant="outlined">
+        <CardContent>
+          <Box display="flex" alignItems="flex-start" gap={2}>
+            <DragIcon
+              sx={{
+                color: 'text.secondary',
+                cursor: 'grab',
+                mt: 0.5,
+                '&:active': { cursor: 'grabbing' },
+              }}
+              {...attributes}
+              {...listeners}
+            />
+            <Box flex={1}>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <Typography variant="h6" component="div">
+                  {index + 1}. {activity.name}
+                </Typography>
+                {activity.required && (
+                  <Chip label="Requerido" color="error" size="small" />
+                )}
+                {activity.allowMultiple && (
+                  <Chip label="Repetible" color="info" size="small" />
+                )}
+              </Box>
+
+              <Typography variant="body2" color="text.secondary" paragraph>
+                {activity.helpText}
+              </Typography>
+
+              <Box display="flex" gap={1} flexWrap="wrap">
+                <Chip 
+                  label={getFieldTypeLabel(activity.fieldType)} 
+                  size="small" 
+                  variant="outlined"
+                />
+                {activity.measurementUnit && (
+                  <Chip 
+                    label={`Unidad: ${activity.measurementUnit}`} 
+                    size="small" 
+                    variant="outlined"
+                  />
+                )}
+                {(activity.expectedMin !== undefined || activity.expectedMax !== undefined) && (
+                  <Chip 
+                    label={`Rango: ${activity.expectedMin !== undefined ? activity.expectedMin : '?'} - ${activity.expectedMax !== undefined ? activity.expectedMax : '?'}`} 
+                    size="small" 
+                    variant="outlined"
+                  />
+                )}
+                {activity.options && activity.options.length > 0 && (
+                  <Chip 
+                    label={`${activity.options.length} opciones`} 
+                    size="small" 
+                    variant="outlined"
+                  />
+                )}
+              </Box>
+
+              {/* Mostrar reglas de validación */}
+              {activity.validationRules && activity.validationRules.length > 0 && (
+                <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="caption" color="text.secondary" fontWeight="bold" display="block" sx={{ mb: 1 }}>
+                    Reglas de Validación ({activity.validationRules.filter(r => r.isActive).length} activa{activity.validationRules.filter(r => r.isActive).length !== 1 ? 's' : ''}):
+                  </Typography>
+                  <Box display="flex" flexDirection="column" gap={1}>
+                    {activity.validationRules.map((rule, ruleIdx) => (
+                      <Box 
+                        key={ruleIdx} 
+                        sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 1,
+                          p: 1,
+                          bgcolor: rule.severity === 'error' ? 'error.light' : 'warning.light',
+                          borderRadius: 1,
+                          opacity: rule.isActive ? 1 : 0.5,
+                        }}
+                      >
+                        {rule.severity === 'error' ? (
+                          <ErrorIcon fontSize="small" sx={{ color: 'error.dark' }} />
+                        ) : (
+                          <WarningIcon fontSize="small" sx={{ color: 'warning.dark' }} />
+                        )}
+                        <Box flex={1}>
+                          <Typography variant="caption" fontWeight="bold" display="block">
+                            {rule.name}
+                            {!rule.isActive && ' (Inactiva)'}
+                          </Typography>
+                          <Typography variant="caption" display="block" sx={{ color: 'text.secondary' }}>
+                            {rule.condition === 'min' && `Mínimo: ${rule.minValue}`}
+                            {rule.condition === 'max' && `Máximo: ${rule.maxValue}`}
+                            {rule.condition === 'range' && `Rango: ${rule.minValue} - ${rule.maxValue}`}
+                            {rule.condition === 'equals' && `Igual a: ${rule.value}`}
+                            {rule.condition === 'not_equals' && `Distinto de: ${rule.value}`}
+                            {rule.condition === 'formula' && `Fórmula: debe ser ${rule.formulaOperator || '>'} (${rule.formula})`}
+                          </Typography>
+                          <Typography variant="caption" display="block" sx={{ fontStyle: 'italic', mt: 0.5 }}>
+                            "{rule.message}"
+                          </Typography>
+                        </Box>
+                        <Chip
+                          label={rule.severity === 'error' ? 'Error' : 'Alerta'}
+                          size="small"
+                          color={rule.severity === 'error' ? 'error' : 'warning'}
+                          variant="filled"
+                        />
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        </CardContent>
+        <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
+          <Button
+            size="small"
+            startIcon={<EditIcon />}
+            onClick={() => onEdit(activity.id)}
+            disabled={isDragging || isReordering}
+          >
+            Editar
+          </Button>
+          <Button
+            size="small"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={() => onDelete(activity.id)}
+            disabled={isDragging || isReordering}
+          >
+            Eliminar
+          </Button>
+        </CardActions>
+      </Card>
+    </div>
+  );
+};
 
 export const TemplateConfigPage: React.FC = () => {
   const { templateId } = useParams<{ templateId: string }>();
@@ -43,6 +233,14 @@ export const TemplateConfigPage: React.FC = () => {
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     if (isEditMode && templateId) {
@@ -145,6 +343,58 @@ export const TemplateConfigPage: React.FC = () => {
       calculated: 'Campo Calculado',
     };
     return types[type] || type;
+  };
+
+  const handleDragEnd = async (event: {
+    active: { id: string | number };
+    over: { id: string | number } | null;
+  }) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = activities.findIndex((a) => a.id === active.id);
+    const newIndex = activities.findIndex((a) => a.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    // Actualizar el orden localmente
+    const newActivities = arrayMove(activities, oldIndex, newIndex);
+    setActivities(newActivities);
+
+    // Actualizar el orden en el backend
+    if (isEditMode && templateId) {
+      try {
+        setIsReordering(true);
+        setError('');
+
+        // Actualizar el orden de todas las actividades afectadas
+        const updatePromises = newActivities.map((activity, index) => {
+          const newOrder = index + 1;
+          if (activity.order !== newOrder) {
+            return templateService.updateActivity(
+              templateId,
+              activity.id,
+              { ...activity, order: newOrder }
+            );
+          }
+          return Promise.resolve();
+        });
+
+        await Promise.all(updatePromises);
+      } catch (err) {
+        console.error('Error al actualizar el orden:', err);
+        setError('Error al actualizar el orden de los campos');
+        // Revertir el cambio local
+        await loadTemplateData();
+      } finally {
+        setIsReordering(false);
+      }
+    }
   };
 
   if (loadingData) {
@@ -272,134 +522,30 @@ export const TemplateConfigPage: React.FC = () => {
             Campos Configurados ({activities.length})
           </Typography>
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {activities.map((activity, index) => (
-              <Card key={activity.id} variant="outlined">
-                <CardContent>
-                  <Box display="flex" alignItems="flex-start" gap={2}>
-                    <DragIcon sx={{ color: 'text.secondary', cursor: 'grab', mt: 0.5 }} />
-                    <Box flex={1}>
-                      <Box display="flex" alignItems="center" gap={1} mb={1}>
-                        <Typography variant="h6" component="div">
-                          {index + 1}. {activity.name}
-                        </Typography>
-                        {activity.required && (
-                          <Chip label="Requerido" color="error" size="small" />
-                        )}
-                        {activity.allowMultiple && (
-                          <Chip label="Repetible" color="info" size="small" />
-                        )}
-                      </Box>
-
-                      <Typography variant="body2" color="text.secondary" paragraph>
-                        {activity.helpText}
-                      </Typography>
-
-                      <Box display="flex" gap={1} flexWrap="wrap">
-                        <Chip 
-                          label={getFieldTypeLabel(activity.fieldType)} 
-                          size="small" 
-                          variant="outlined"
-                        />
-                        {activity.measurementUnit && (
-                          <Chip 
-                            label={`Unidad: ${activity.measurementUnit}`} 
-                            size="small" 
-                            variant="outlined"
-                          />
-                        )}
-                        {(activity.expectedMin !== undefined || activity.expectedMax !== undefined) && (
-                          <Chip 
-                            label={`Rango: ${activity.expectedMin !== undefined ? activity.expectedMin : '?'} - ${activity.expectedMax !== undefined ? activity.expectedMax : '?'}`} 
-                            size="small" 
-                            variant="outlined"
-                          />
-                        )}
-                        {activity.options && activity.options.length > 0 && (
-                          <Chip 
-                            label={`${activity.options.length} opciones`} 
-                            size="small" 
-                            variant="outlined"
-                          />
-                        )}
-                      </Box>
-
-                      {/* Mostrar reglas de validación */}
-                      {activity.validationRules && activity.validationRules.length > 0 && (
-                        <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                          <Typography variant="caption" color="text.secondary" fontWeight="bold" display="block" sx={{ mb: 1 }}>
-                            Reglas de Validación ({activity.validationRules.filter(r => r.isActive).length} activa{activity.validationRules.filter(r => r.isActive).length !== 1 ? 's' : ''}):
-                          </Typography>
-                          <Box display="flex" flexDirection="column" gap={1}>
-                            {activity.validationRules.map((rule, ruleIdx) => (
-                              <Box 
-                                key={ruleIdx} 
-                                sx={{ 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  gap: 1,
-                                  p: 1,
-                                  bgcolor: rule.severity === 'error' ? 'error.light' : 'warning.light',
-                                  borderRadius: 1,
-                                  opacity: rule.isActive ? 1 : 0.5,
-                                }}
-                              >
-                                {rule.severity === 'error' ? (
-                                  <ErrorIcon fontSize="small" sx={{ color: 'error.dark' }} />
-                                ) : (
-                                  <WarningIcon fontSize="small" sx={{ color: 'warning.dark' }} />
-                                )}
-                                <Box flex={1}>
-                                  <Typography variant="caption" fontWeight="bold" display="block">
-                                    {rule.name}
-                                    {!rule.isActive && ' (Inactiva)'}
-                                  </Typography>
-                                  <Typography variant="caption" display="block" sx={{ color: 'text.secondary' }}>
-                                    {rule.condition === 'min' && `Mínimo: ${rule.minValue}`}
-                                    {rule.condition === 'max' && `Máximo: ${rule.maxValue}`}
-                                    {rule.condition === 'range' && `Rango: ${rule.minValue} - ${rule.maxValue}`}
-                                    {rule.condition === 'equals' && `Igual a: ${rule.value}`}
-                                    {rule.condition === 'not_equals' && `Distinto de: ${rule.value}`}
-                                    {rule.condition === 'formula' && `Fórmula: debe ser ${rule.formulaOperator || '>'} (${rule.formula})`}
-                                  </Typography>
-                                  <Typography variant="caption" display="block" sx={{ fontStyle: 'italic', mt: 0.5 }}>
-                                    "{rule.message}"
-                                  </Typography>
-                                </Box>
-                                <Chip
-                                  label={rule.severity === 'error' ? 'Error' : 'Alerta'}
-                                  size="small"
-                                  color={rule.severity === 'error' ? 'error' : 'warning'}
-                                  variant="filled"
-                                />
-                              </Box>
-                            ))}
-                          </Box>
-                        </Box>
-                      )}
-                    </Box>
-                  </Box>
-                </CardContent>
-                <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
-                  <Button
-                    size="small"
-                    startIcon={<EditIcon />}
-                    onClick={() => handleEditActivity(activity.id)}
-                  >
-                    Editar
-                  </Button>
-                  <Button
-                    size="small"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={() => handleDeleteActivity(activity.id)}
-                  >
-                    Eliminar
-                  </Button>
-                </CardActions>
-              </Card>
-            ))}
-          </Box>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={activities.map((a) => a.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {activities.map((activity, index) => (
+                  <SortableItem
+                    key={activity.id}
+                    activity={activity}
+                    index={index}
+                    onEdit={handleEditActivity}
+                    onDelete={handleDeleteActivity}
+                    getFieldTypeLabel={getFieldTypeLabel}
+                    isReordering={isReordering}
+                  />
+                ))}
+              </Box>
+            </SortableContext>
+          </DndContext>
         </Box>
       )}
 
