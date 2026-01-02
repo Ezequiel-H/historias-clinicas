@@ -168,17 +168,16 @@ export const PatientVisitFormPage: React.FC = () => {
     setActiveStep(2);
   };
 
-  const handleDownload = () => {
-    if (!visitData) return;
+  const handleDownload = async () => {
+    if (!visitData || !selectedProtocol) return;
 
     const dataStr = JSON.stringify(visitData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement("a");
-    link.href = url;
     
     // Extract visitName
     const visitName = visitData.visitName || selectedVisit?.name || "visita";
+    
+    // Extract protocol name
+    const protocolName = selectedProtocol.name || "protocolo";
     
     // Find "Nombre y Apellido" field from activities
     let nombreApellido = "";
@@ -191,54 +190,100 @@ export const PatientVisitFormPage: React.FC = () => {
       }
     }
     
-    // Find "Fecha de la Visita" field from activities
-    let fechaVisita = "";
-    if (visitData.activities && selectedVisit) {
-      // First try to find by isVisitDate flag
-      const visitDateActivityId = selectedVisit.activities.find(
-        (activity: any) => activity.isVisitDate === true
-      )?.id;
+    // Use patient name or fallback
+    const patientName = nombreApellido || "paciente-desconocido";
+    
+    // Check if we're in Electron and fileSystem API is available
+    console.log('[Renderer] Checking fileSystem availability:', {
+      hasFileSystem: !!window.fileSystem,
+      fileSystemKeys: window.fileSystem ? Object.keys(window.fileSystem) : [],
+    });
+    
+    if (window.fileSystem) {
+      console.log('[Renderer] Calling saveVisitJson with:', {
+        protocolName,
+        patientName,
+        visitName,
+        jsonContentLength: dataStr.length,
+      });
       
-      if (visitDateActivityId) {
-        const visitDateActivity = visitData.activities.find(
-          (activity: any) => activity.id === visitDateActivityId
-        );
-        if (visitDateActivity) {
-          fechaVisita = visitDateActivity.date || visitDateActivity.value || "";
+      try {
+        const result = await window.fileSystem.saveVisitJson({
+          protocolName,
+          patientName,
+          visitName,
+          jsonContent: dataStr,
+        });
+        
+        console.log('[Renderer] saveVisitJson result:', result);
+        
+        if (result.success) {
+          setError("");
+          alert(`Archivo guardado exitosamente en:\n${result.path}`);
+        } else {
+          setError(`Error al guardar el archivo: ${result.error || "Error desconocido"}`);
         }
-      } else {
-        // Fallback: search by name
-        const fechaVisitaActivity = visitData.activities.find(
-          (activity: any) => activity.name === "Fecha de la Visita"
-        );
-        if (fechaVisitaActivity) {
-          fechaVisita = fechaVisitaActivity.date || fechaVisitaActivity.value || "";
+      } catch (err) {
+        console.error("[Renderer] Error saving file:", err);
+        setError(`Error al guardar el archivo: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else {
+      console.log('[Renderer] fileSystem not available, using browser download fallback');
+      // Fallback to browser download if not in Electron
+      const dataBlob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      
+      // Find "Fecha de la Visita" field from activities
+      let fechaVisita = "";
+      if (visitData.activities && selectedVisit) {
+        // First try to find by isVisitDate flag
+        const visitDateActivityId = selectedVisit.activities.find(
+          (activity: any) => activity.isVisitDate === true
+        )?.id;
+        
+        if (visitDateActivityId) {
+          const visitDateActivity = visitData.activities.find(
+            (activity: any) => activity.id === visitDateActivityId
+          );
+          if (visitDateActivity) {
+            fechaVisita = visitDateActivity.date || visitDateActivity.value || "";
+          }
+        } else {
+          // Fallback: search by name
+          const fechaVisitaActivity = visitData.activities.find(
+            (activity: any) => activity.name === "Fecha de la Visita"
+          );
+          if (fechaVisitaActivity) {
+            fechaVisita = fechaVisitaActivity.date || fechaVisitaActivity.value || "";
+          }
         }
       }
+      
+      // Build filename: visitName - Nombre y Apellido - Fecha de la Visita
+      const filenameParts = [visitName];
+      if (nombreApellido) {
+        filenameParts.push(nombreApellido);
+      }
+      if (fechaVisita) {
+        // Format date if needed (remove time if present)
+        const dateOnly = fechaVisita.split("T")[0];
+        filenameParts.push(dateOnly);
+      }
+      
+      // Sanitize filename (remove invalid characters for filenames)
+      const sanitizedFilename = filenameParts
+        .join("-")
+        .replace(/[<>:"/\\|?*]/g, "") // Remove invalid filename characters
+        .trim();
+      
+      link.download = `${sanitizedFilename || "visita"}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     }
-    
-    // Build filename: visitName - Nombre y Apellido - Fecha de la Visita
-    const filenameParts = [visitName];
-    if (nombreApellido) {
-      filenameParts.push(nombreApellido);
-    }
-    if (fechaVisita) {
-      // Format date if needed (remove time if present)
-      const dateOnly = fechaVisita.split("T")[0];
-      filenameParts.push(dateOnly);
-    }
-    
-    // Sanitize filename (remove invalid characters for filenames)
-    const sanitizedFilename = filenameParts
-      .join("-")
-      .replace(/[<>:"/\\|?*]/g, "") // Remove invalid filename characters
-      .trim();
-    
-    link.download = `${sanitizedFilename || "visita"}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   const handlePreviewClinicalHistory = async () => {
