@@ -50,14 +50,42 @@ const theme = createTheme({
   },
   typography: {
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontSize: 18,
+    body1: {
+      fontSize: '1.125rem', // 18px
+    },
+    body2: {
+      fontSize: '1rem', // 16px
+    },
+    h1: {
+      fontSize: '2.5rem', // 40px
+    },
+    h2: {
+      fontSize: '2rem', // 32px
+    },
+    h3: {
+      fontSize: '1.75rem', // 28px
+    },
     h4: {
+      fontSize: '1.5rem', // 24px
       fontWeight: 600,
     },
     h5: {
+      fontSize: '1.25rem', // 20px
       fontWeight: 600,
     },
     h6: {
+      fontSize: '1.125rem', // 18px
       fontWeight: 600,
+    },
+    button: {
+      fontSize: '1rem', // 16px
+    },
+    caption: {
+      fontSize: '0.875rem', // 14px
+    },
+    overline: {
+      fontSize: '0.75rem', // 12px
     },
   },
   shape: {
