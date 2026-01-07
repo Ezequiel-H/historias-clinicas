@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Box,
   Paper,
@@ -14,12 +14,17 @@ import {
   Stepper,
   Step,
   StepLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   TextField,
 } from "@mui/material";
 import {
   ArrowBack as BackIcon,
   Download as DownloadIcon,
   Description as DescriptionIcon,
+  Edit as EditIcon,
 } from "@mui/icons-material";
 import protocolService from "../../services/protocolService";
 import type { Protocol, Visit } from "../../types";
@@ -33,6 +38,7 @@ const steps = [
 
 export const PatientVisitFormPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeStep, setActiveStep] = useState(0);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [selectedProtocolId, setSelectedProtocolId] = useState<string>("");
@@ -41,15 +47,24 @@ export const PatientVisitFormPage: React.FC = () => {
     null
   );
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
-  const [patientId, setPatientId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [visitData, setVisitData] = useState<any>(null);
   const [generatingHistory, setGeneratingHistory] = useState(false);
+  const [importedData, setImportedData] = useState<any>(null);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewText, setPreviewText] = useState("");
+  const [editedPreviewText, setEditedPreviewText] = useState("");
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   useEffect(() => {
-    loadProtocols();
-  }, []);
+    // Check if we have imported data from location state
+    const imported = (location.state as any)?.importedData;
+    if (imported) {
+      setImportedData(imported);
+    }
+    loadProtocols(imported);
+  }, [location.state]);
 
   useEffect(() => {
     if (selectedProtocolId) {
@@ -66,11 +81,49 @@ export const PatientVisitFormPage: React.FC = () => {
     }
   }, [selectedProtocol, selectedVisitId]);
 
-  const loadProtocols = async () => {
+  const loadProtocols = async (importedDataToProcess?: any) => {
     try {
       setLoading(true);
       const response = await protocolService.getProtocols(1, 100, "active");
       setProtocols(response.data);
+      
+      // If we have imported data, try to find matching protocol and visit
+      const dataToProcess = importedDataToProcess || importedData;
+      if (dataToProcess) {
+        const protocolName = dataToProcess.protocolName;
+        const visitName = dataToProcess.visitName;
+        
+        if (protocolName && visitName) {
+          // Find protocol by name
+          const matchingProtocol = response.data.find(
+            (p: Protocol) => p.name === protocolName
+          );
+          
+          if (matchingProtocol) {
+            setSelectedProtocolId(matchingProtocol.id);
+            // Load the protocol to get visits
+            const protocolResponse = await protocolService.getProtocolById(matchingProtocol.id);
+            const protocol = protocolResponse.data;
+            setSelectedProtocol(protocol);
+            
+            // Find visit by name
+            const matchingVisit = protocol.visits.find(
+              (v: Visit) => v.name === visitName
+            );
+            
+            if (matchingVisit) {
+              setSelectedVisitId(matchingVisit.id);
+              setSelectedVisit(matchingVisit);
+              // Auto-advance to form step
+              setActiveStep(1);
+            } else {
+              setError(`No se encontró la visita "${visitName}" en el protocolo "${protocolName}".`);
+            }
+          } else {
+            setError(`No se encontró el protocolo "${protocolName}".`);
+          }
+        }
+      }
     } catch (err) {
       console.error("Error al cargar protocolos:", err);
       setError("Error al cargar los protocolos. Por favor intenta nuevamente.");
@@ -98,10 +151,6 @@ export const PatientVisitFormPage: React.FC = () => {
         setError("Por favor selecciona un protocolo y una visita");
         return;
       }
-      if (!patientId.trim()) {
-        setError("Por favor ingresa un ID de paciente");
-        return;
-      }
       setError("");
     }
     setActiveStep(activeStep + 1);
@@ -127,13 +176,96 @@ export const PatientVisitFormPage: React.FC = () => {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `visita_${selectedVisit?.name || "visita"}_${patientId}_${
-      new Date().toISOString().split("T")[0]
-    }.json`;
+    
+    // Extract visitName
+    const visitName = visitData.visitName || selectedVisit?.name || "visita";
+    
+    // Find "Nombre y Apellido" field from activities
+    let nombreApellido = "";
+    if (visitData.activities) {
+      const nombreApellidoActivity = visitData.activities.find(
+        (activity: any) => activity.name === "Nombre y Apellido"
+      );
+      if (nombreApellidoActivity) {
+        nombreApellido = nombreApellidoActivity.value || "";
+      }
+    }
+    
+    // Find "Fecha de la Visita" field from activities
+    let fechaVisita = "";
+    if (visitData.activities && selectedVisit) {
+      // First try to find by isVisitDate flag
+      const visitDateActivityId = selectedVisit.activities.find(
+        (activity: any) => activity.isVisitDate === true
+      )?.id;
+      
+      if (visitDateActivityId) {
+        const visitDateActivity = visitData.activities.find(
+          (activity: any) => activity.id === visitDateActivityId
+        );
+        if (visitDateActivity) {
+          fechaVisita = visitDateActivity.date || visitDateActivity.value || "";
+        }
+      } else {
+        // Fallback: search by name
+        const fechaVisitaActivity = visitData.activities.find(
+          (activity: any) => activity.name === "Fecha de la Visita"
+        );
+        if (fechaVisitaActivity) {
+          fechaVisita = fechaVisitaActivity.date || fechaVisitaActivity.value || "";
+        }
+      }
+    }
+    
+    // Build filename: visitName - Nombre y Apellido - Fecha de la Visita
+    const filenameParts = [visitName];
+    if (nombreApellido) {
+      filenameParts.push(nombreApellido);
+    }
+    if (fechaVisita) {
+      // Format date if needed (remove time if present)
+      const dateOnly = fechaVisita.split("T")[0];
+      filenameParts.push(dateOnly);
+    }
+    
+    // Sanitize filename (remove invalid characters for filenames)
+    const sanitizedFilename = filenameParts
+      .join("-")
+      .replace(/[<>:"/\\|?*]/g, "") // Remove invalid filename characters
+      .trim();
+    
+    link.download = `${sanitizedFilename || "visita"}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const handlePreviewClinicalHistory = async () => {
+    if (!visitData || !selectedProtocolId || !selectedVisitId) return;
+
+    try {
+      setLoadingPreview(true);
+      setError("");
+
+      const text = await protocolService.previewClinicalHistory(
+        selectedProtocolId,
+        selectedVisitId,
+        visitData
+      );
+
+      setPreviewText(text);
+      setEditedPreviewText(text);
+      setPreviewDialogOpen(true);
+    } catch (err: any) {
+      console.error("Error al previsualizar historia clínica:", err);
+      setError(
+        err.response?.data?.error ||
+          "Error al previsualizar la historia clínica. Por favor intenta nuevamente."
+      );
+    } finally {
+      setLoadingPreview(false);
+    }
   };
 
   const handleGenerateClinicalHistory = async () => {
@@ -143,10 +275,14 @@ export const PatientVisitFormPage: React.FC = () => {
       setGeneratingHistory(true);
       setError("");
 
+      // Usar el texto editado si existe, si no usar el original
+      const textToUse = editedPreviewText.trim() || previewText;
+
       const blob = await protocolService.generateClinicalHistory(
         selectedProtocolId,
         selectedVisitId,
-        visitData
+        visitData,
+        textToUse
       );
 
       // Descargar el PDF
@@ -161,6 +297,9 @@ export const PatientVisitFormPage: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+
+      // Cerrar el diálogo después de generar el PDF
+      setPreviewDialogOpen(false);
     } catch (err: any) {
       console.error("Error al generar historia clínica:", err);
       setError(
@@ -170,6 +309,12 @@ export const PatientVisitFormPage: React.FC = () => {
     } finally {
       setGeneratingHistory(false);
     }
+  };
+
+  const handleClosePreviewDialog = () => {
+    setPreviewDialogOpen(false);
+    setPreviewText("");
+    setEditedPreviewText("");
   };
 
   const getVisitTypeLabel = (type: string) => {
@@ -233,15 +378,6 @@ export const PatientVisitFormPage: React.FC = () => {
           </Typography>
 
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <TextField
-              label="ID del Paciente"
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              fullWidth
-              required
-              helperText="Ingresa un identificador único para el paciente (no se guardará en la base de datos)"
-            />
-
             <FormControl fullWidth required>
               <InputLabel>Protocolo</InputLabel>
               <Select
@@ -308,7 +444,7 @@ export const PatientVisitFormPage: React.FC = () => {
               onClick={handleNext}
               variant="contained"
               disabled={
-                !selectedProtocolId || !selectedVisitId || !patientId.trim()
+                !selectedProtocolId || !selectedVisitId
               }
             >
               Siguiente
@@ -321,9 +457,10 @@ export const PatientVisitFormPage: React.FC = () => {
         <PatientVisitForm
           visit={selectedVisit}
           protocolName={selectedProtocol.name}
-          patientId={patientId}
+          patientId=""
           onComplete={handleFormComplete}
           onCancel={handleBack}
+          initialData={importedData}
         />
       )}
 
@@ -379,26 +516,87 @@ export const PatientVisitFormPage: React.FC = () => {
                 Descargar JSON
               </Button>
               <Button
-                onClick={handleGenerateClinicalHistory}
+                onClick={handlePreviewClinicalHistory}
                 variant="contained"
                 startIcon={
-                  generatingHistory ? (
+                  loadingPreview ? (
                     <CircularProgress size={20} />
                   ) : (
                     <DescriptionIcon />
                   )
                 }
                 color="primary"
-                disabled={generatingHistory}
+                disabled={loadingPreview}
               >
-                {generatingHistory
-                  ? "Generando..."
+                {loadingPreview
+                  ? "Generando Vista Previa..."
                   : "Generar Historia Clínica"}
               </Button>
             </Box>
           </Box>
         </Paper>
       )}
+
+      {/* Diálogo de previsualización y edición */}
+      <Dialog
+        open={previewDialogOpen}
+        onClose={handleClosePreviewDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            minHeight: '70vh',
+          },
+        }}
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <EditIcon />
+            <Typography variant="h6">
+              Vista Previa de Historia Clínica
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Revisa y edita el texto generado por la IA antes de generar el PDF.
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            rows={20}
+            value={editedPreviewText}
+            onChange={(e) => setEditedPreviewText(e.target.value)}
+            variant="outlined"
+            sx={{
+              '& .MuiInputBase-root': {
+                fontFamily: 'monospace',
+                fontSize: '0.875rem',
+              },
+            }}
+            placeholder="El texto de la historia clínica aparecerá aquí..."
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleClosePreviewDialog} variant="outlined">
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleGenerateClinicalHistory}
+            variant="contained"
+            startIcon={
+              generatingHistory ? (
+                <CircularProgress size={20} />
+              ) : (
+                <DescriptionIcon />
+              )
+            }
+            disabled={generatingHistory || !editedPreviewText.trim()}
+          >
+            {generatingHistory ? "Generando PDF..." : "Generar PDF"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

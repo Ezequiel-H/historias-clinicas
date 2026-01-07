@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Box,
   Paper,
@@ -9,10 +9,9 @@ import {
   Alert,
 } from '@mui/material';
 import {
-  Assignment as AssignmentIcon,
-  AccessTime as TimeIcon,
-  CheckCircle as CheckIcon,
   LocalHospital as HospitalIcon,
+  AddCircle as AddIcon,
+  UploadFile as UploadIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 export const DoctorDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <Box>
@@ -36,79 +36,79 @@ export const DoctorDashboardPage: React.FC = () => {
       {user?.isActive && (
         <>
           {/* Información del médico */}
-          <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, mb: 3 }}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <HospitalIcon sx={{ mr: 2, fontSize: 40, color: 'primary.main' }} />
-                    <Box>
-                      <Typography variant="h6" gutterBottom>
-                        Información Profesional
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Licencia: {user?.licenseNumber}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Email: {user?.email}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <HospitalIcon sx={{ mr: 2, fontSize: 40, color: 'primary.main' }} />
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Información Profesional
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Licencia: {user?.licenseNumber}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Email: {user?.email}
+                  </Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <AssignmentIcon sx={{ mr: 2, fontSize: 40, color: 'success.main' }} />
-                    <Box>
-                      <Typography variant="h6" gutterBottom>
-                        Protocolos Asignados
-                      </Typography>
-                      <Typography variant="h4" color="primary">
-                        0
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Protocolos activos
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-          </Box>
-
-          {/* Acciones rápidas */}
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-              Acciones Rápidas
+          {/* Crear visita */}
+          <Paper sx={{ p: 4, textAlign: 'center', mb: 3 }}>
+            <Typography variant="h5" gutterBottom sx={{ mb: 2, fontWeight: 'bold' }}>
+              Crear Nueva Visita
             </Typography>
-            <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' } }}>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+              Complete el formulario de visita para un paciente seleccionando el protocolo y la visita correspondiente.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
               <Button
-                variant="outlined"
-                fullWidth
-                startIcon={<AssignmentIcon />}
-                onClick={() => navigate('/protocols')}
-                sx={{ py: 2 }}
-              >
-                Ver Protocolos
-              </Button>
-              <Button
-                variant="outlined"
-                fullWidth
-                startIcon={<CheckIcon />}
+                variant="contained"
+                size="large"
+                startIcon={<AddIcon />}
                 onClick={() => navigate('/patient-visits/new')}
-                sx={{ py: 2 }}
+                sx={{ py: 1.5, px: 4, fontSize: '1.1rem' }}
               >
-                Cargar Visita
+                Crear Visita
               </Button>
               <Button
                 variant="outlined"
-                fullWidth
-                startIcon={<TimeIcon />}
-                onClick={() => navigate('/protocols')}
-                sx={{ py: 2 }}
+                size="large"
+                startIcon={<UploadIcon />}
+                onClick={() => fileInputRef.current?.click()}
+                sx={{ py: 1.5, px: 4, fontSize: '1.1rem' }}
               >
-                Historial
+                Cargar desde JSON
               </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      try {
+                        const jsonData = JSON.parse(event.target?.result as string);
+                        // Navigate to visit creation page with the JSON data
+                        navigate('/patient-visits/new', { state: { importedData: jsonData } });
+                      } catch (error) {
+                        alert('Error al leer el archivo JSON. Por favor verifica que el archivo sea válido.');
+                        console.error('Error parsing JSON:', error);
+                      }
+                    };
+                    reader.readAsText(file);
+                  }
+                  // Reset input so the same file can be selected again
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+              />
             </Box>
           </Paper>
 
@@ -118,7 +118,7 @@ export const DoctorDashboardPage: React.FC = () => {
               Estado de la Cuenta
             </Typography>
             <Alert severity="success" sx={{ mt: 2 }}>
-              Su cuenta está activa y lista para usar. Puede comenzar a trabajar en protocolos asignados.
+              Su cuenta está activa y lista para crear visitas.
             </Alert>
           </Paper>
         </>
@@ -131,7 +131,7 @@ export const DoctorDashboardPage: React.FC = () => {
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
             Una vez que su cuenta sea aprobada por un administrador, recibirá un email de confirmación
-            y podrá acceder a todas las funcionalidades del sistema.
+            y podrá comenzar a crear visitas.
           </Typography>
         </Paper>
       )}

@@ -37,6 +37,7 @@ interface PatientVisitFormProps {
   patientId: string;
   onComplete: (data: any) => void;
   onCancel: () => void;
+  initialData?: any;
 }
 
 interface ValidationError {
@@ -59,12 +60,86 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
   patientId,
   onComplete,
   onCancel,
+  initialData,
 }) => {
   const activities = visit.activities || [];
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
   const [activityDescriptions, setActivityDescriptions] = useState<Record<string, string>>({});
+  
+  // Initialize form values from imported data if available
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (!initialData?.activities || initializedRef.current) return;
+    
+    const values: Record<string, any> = {};
+    const descriptions: Record<string, string> = {};
+    
+    initialData.activities.forEach((importedActivity: any) => {
+      const activityId = importedActivity.id;
+      const activity = activities.find(a => a.id === activityId);
+      
+      if (!activity) return;
+      
+      // Set the main value
+      if (importedActivity.value !== undefined && importedActivity.value !== null) {
+        values[activityId] = importedActivity.value;
+      }
+      
+      // Set date and time if they exist
+      if (importedActivity.date !== undefined && importedActivity.date !== null) {
+        if (activity.allowMultiple) {
+          // For multiple measurements, we need to handle arrays
+          const dateKey = activity.requireDatePerMeasurement !== false 
+            ? `${activityId}_date` 
+            : `${activityId}_date`;
+          values[dateKey] = importedActivity.date;
+        } else {
+          values[`${activityId}_date`] = importedActivity.date;
+        }
+      }
+      
+      if (importedActivity.time !== undefined && importedActivity.time !== null) {
+        if (activity.allowMultiple) {
+          const timeKey = activity.requireTimePerMeasurement !== false 
+            ? `${activityId}_time` 
+            : `${activityId}_time`;
+          values[timeKey] = importedActivity.time;
+        } else {
+          values[`${activityId}_time`] = importedActivity.time;
+        }
+      }
+      
+      // Set description if it exists
+      if (importedActivity.description) {
+        descriptions[activityId] = importedActivity.description;
+      }
+      
+      // Handle multiple measurements
+      if (activity.allowMultiple && Array.isArray(importedActivity.measurements)) {
+        values[activityId] = importedActivity.measurements.map((m: any) => m.value);
+        importedActivity.measurements.forEach((measurement: any, index: number) => {
+          if (measurement.date) {
+            const dateKey = activity.requireDatePerMeasurement !== false
+              ? `${activityId}_date_${index}`
+              : `${activityId}_date`;
+            values[dateKey] = measurement.date;
+          }
+          if (measurement.time) {
+            const timeKey = activity.requireTimePerMeasurement !== false
+              ? `${activityId}_time_${index}`
+              : `${activityId}_time`;
+            values[timeKey] = measurement.time;
+          }
+        });
+      }
+    });
+    
+    setActivityDescriptions(descriptions);
+    setFormValues(values);
+    initializedRef.current = true;
+  }, [initialData, activities]);
   const [descriptionDialogOpen, setDescriptionDialogOpen] = useState(false);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [descriptionText, setDescriptionText] = useState('');
@@ -1091,9 +1166,6 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
         </Typography>
         <Typography variant="body2" color="text.secondary" gutterBottom>
           Protocolo: {protocolName}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
-          ID Paciente: {patientId}
         </Typography>
         <Alert severity="info" sx={{ mt: 2 }}>
           Complete todos los campos requeridos. Los datos no se guardarán en la base de datos, solo se generará un archivo JSON para descargar.
