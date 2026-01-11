@@ -10,6 +10,7 @@ import {
   Alert,
   Chip,
   Snackbar,
+  CircularProgress,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -28,6 +29,7 @@ import {
   calculateMedicationAdherence,
   detectAdherenceProblems,
 } from './shared';
+import { mergeActivitiesWithSystem } from '../../utils/systemActivities';
 
 interface VisitFormPreviewProps {
   open: boolean;
@@ -55,9 +57,32 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   open,
   onClose,
   visitName,
-  activities,
+  activities: propActivities,
 }) => {
+  const [activities, setActivities] = useState<Activity[]>(propActivities || []);
+  const [loadingActivities, setLoadingActivities] = useState(true);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
+  
+  // Load and merge system activities with provided activities
+  useEffect(() => {
+    const loadActivities = async () => {
+      try {
+        setLoadingActivities(true);
+        const mergedActivities = await mergeActivitiesWithSystem(propActivities || []);
+        setActivities(mergedActivities);
+      } catch (error) {
+        console.error('Error loading system activities:', error);
+        // Fallback to just provided activities if system activities fail to load
+        setActivities(propActivities || []);
+      } finally {
+        setLoadingActivities(false);
+      }
+    };
+    
+    if (open) {
+      loadActivities();
+    }
+  }, [propActivities, open]);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -1231,7 +1256,11 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       </DialogTitle>
 
       <DialogContent dividers>
-        {activities.length === 0 ? (
+        {loadingActivities ? (
+          <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+            <CircularProgress />
+          </Box>
+        ) : activities.length === 0 ? (
           <Alert severity="info">
             No hay campos configurados en esta visita. Agregue campos para poder probar el formulario.
           </Alert>
