@@ -1,18 +1,18 @@
 {
-  "extends": "./tsconfig.node.json",
   "compilerOptions": {
     "outDir": "./dist-electron",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "CommonJS",
+    "moduleResolution": "node",
     "target": "ES2022",
     "lib": ["ES2022"],
     "types": ["node"],
-    "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": false,
-    "allowImportingTsExtensions": false
+    "strict": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true
   },
-  "include": ["electron/main.ts"]
+  "include": ["electron/preload.ts"]
 }
 

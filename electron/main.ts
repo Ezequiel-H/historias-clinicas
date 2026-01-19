@@ -23,9 +23,18 @@ const VITE_PUBLIC = app.isPackaged
 
 let win: BrowserWindow | null = null;
 // Here, you can also use other preload
-const preload = join(__dirname, 'preload.js');
+// Use .cjs extension for CommonJS preload script (package.json has "type": "module")
+const preload = join(__dirname, 'preload.cjs');
 // 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite feature
 const url = process.env['VITE_DEV_SERVER_URL'] || 'http://localhost:5173';
+
+// Verify preload script exists
+if (!existsSync(preload)) {
+  console.error('[Main] Preload script not found at:', preload);
+  console.error('[Main] __dirname is:', __dirname);
+  throw new Error(`Preload script not found at ${preload}`);
+}
+console.log('[Main] Preload script found at:', preload);
 
 function createWindow() {
   win = new BrowserWindow({
@@ -45,6 +54,17 @@ function createWindow() {
   // Test active push message to Renderer-process.
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', new Date().toLocaleString());
+    console.log('[Main] Window finished loading, checking preload...');
+  });
+
+  // Log any console messages from the renderer/preload
+  win.webContents.on('console-message', (_event, level, message) => {
+    console.log(`[Renderer Console ${level}]:`, message);
+  });
+
+  // Verify preload loaded
+  win.webContents.on('dom-ready', () => {
+    console.log('[Main] DOM ready, preload should be loaded');
   });
 
   if (url && !app.isPackaged) {

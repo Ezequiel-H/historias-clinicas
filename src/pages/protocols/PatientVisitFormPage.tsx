@@ -19,12 +19,14 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Snackbar,
 } from "@mui/material";
 import {
   ArrowBack as BackIcon,
   Download as DownloadIcon,
   Description as DescriptionIcon,
   Edit as EditIcon,
+  CheckCircle as CheckCircleIcon,
 } from "@mui/icons-material";
 import protocolService from "../../services/protocolService";
 import type { Protocol, Visit } from "../../types";
@@ -35,6 +37,26 @@ const steps = [
   "Completar Formulario",
   "Revisar y Descargar",
 ];
+
+// Helper function to wait for fileSystem API to be available
+const waitForFileSystem = async (
+  maxWaitMs: number = 2000
+): Promise<boolean> => {
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    if (window.fileSystem) {
+      console.log("[Renderer] fileSystem API is now available");
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  console.warn(
+    "[Renderer] fileSystem API not available after waiting",
+    maxWaitMs,
+    "ms"
+  );
+  return false;
+};
 
 export const PatientVisitFormPage: React.FC = () => {
   const navigate = useNavigate();
@@ -56,6 +78,33 @@ export const PatientVisitFormPage: React.FC = () => {
   const [previewText, setPreviewText] = useState("");
   const [editedPreviewText, setEditedPreviewText] = useState("");
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [savedFilePath, setSavedFilePath] = useState("");
+
+  // Check for fileSystem availability on mount
+  useEffect(() => {
+    console.log(
+      "[Renderer] Component mounted, checking fileSystem availability:",
+      {
+        hasFileSystem: !!window.fileSystem,
+        hasIpcRenderer: !!window.ipcRenderer,
+        allWindowKeys: Object.keys(window).filter(
+          (key) => key.startsWith("fileSystem") || key.startsWith("ipcRenderer")
+        ),
+      }
+    );
+
+    // Wait a bit and check again in case preload is still loading
+    const checkInterval = setTimeout(() => {
+      console.log("[Renderer] Re-checking fileSystem after delay:", {
+        hasFileSystem: !!window.fileSystem,
+        fileSystemKeys: window.fileSystem ? Object.keys(window.fileSystem) : [],
+      });
+    }, 500);
+
+    return () => clearTimeout(checkInterval);
+  }, []);
 
   useEffect(() => {
     // Check if we have imported data from location state
@@ -86,38 +135,42 @@ export const PatientVisitFormPage: React.FC = () => {
       setLoading(true);
       const response = await protocolService.getProtocols(1, 100, "active");
       setProtocols(response.data);
-      
+
       // If we have imported data, try to find matching protocol and visit
       const dataToProcess = importedDataToProcess || importedData;
       if (dataToProcess) {
         const protocolName = dataToProcess.protocolName;
         const visitName = dataToProcess.visitName;
-        
+
         if (protocolName && visitName) {
           // Find protocol by name
           const matchingProtocol = response.data.find(
             (p: Protocol) => p.name === protocolName
           );
-          
+
           if (matchingProtocol) {
             setSelectedProtocolId(matchingProtocol.id);
             // Load the protocol to get visits
-            const protocolResponse = await protocolService.getProtocolById(matchingProtocol.id);
+            const protocolResponse = await protocolService.getProtocolById(
+              matchingProtocol.id
+            );
             const protocol = protocolResponse.data;
             setSelectedProtocol(protocol);
-            
+
             // Find visit by name
             const matchingVisit = protocol.visits.find(
               (v: Visit) => v.name === visitName
             );
-            
+
             if (matchingVisit) {
               setSelectedVisitId(matchingVisit.id);
               setSelectedVisit(matchingVisit);
               // Auto-advance to form step
               setActiveStep(1);
             } else {
-              setError(`No se encontró la visita "${visitName}" en el protocolo "${protocolName}".`);
+              setError(
+                `No se encontró la visita "${visitName}" en el protocolo "${protocolName}".`
+              );
             }
           } else {
             setError(`No se encontró el protocolo "${protocolName}".`);
@@ -172,13 +225,13 @@ export const PatientVisitFormPage: React.FC = () => {
     if (!visitData || !selectedProtocol) return;
 
     const dataStr = JSON.stringify(visitData, null, 2);
-    
+
     // Extract visitName
     const visitName = visitData.visitName || selectedVisit?.name || "visita";
-    
+
     // Extract protocol name
     const protocolName = selectedProtocol.name || "protocolo";
-    
+
     // Find "Nombre y Apellido" field from activities
     let nombreApellido = "";
     if (visitData.activities) {
@@ -189,24 +242,28 @@ export const PatientVisitFormPage: React.FC = () => {
         nombreApellido = nombreApellidoActivity.value || "";
       }
     }
-    
+
     // Use patient name or fallback
     const patientName = nombreApellido || "paciente-desconocido";
-    
+
     // Check if we're in Electron and fileSystem API is available
-    console.log('[Renderer] Checking fileSystem availability:', {
+    console.log("[Renderer] Checking fileSystem availability:", {
       hasFileSystem: !!window.fileSystem,
       fileSystemKeys: window.fileSystem ? Object.keys(window.fileSystem) : [],
     });
-    
-    if (window.fileSystem) {
-      console.log('[Renderer] Calling saveVisitJson with:', {
+
+    // Wait for fileSystem to be available (in case preload is still loading)
+    const fileSystemAvailable =
+      window.fileSystem || (await waitForFileSystem(1000));
+
+    if (fileSystemAvailable && window.fileSystem) {
+      console.log("[Renderer] Calling saveVisitJson with:", {
         protocolName,
         patientName,
         visitName,
         jsonContentLength: dataStr.length,
       });
-      
+
       try {
         const result = await window.fileSystem.saveVisitJson({
           protocolName,
@@ -214,27 +271,39 @@ export const PatientVisitFormPage: React.FC = () => {
           visitName,
           jsonContent: dataStr,
         });
-        
-        console.log('[Renderer] saveVisitJson result:', result);
-        
+
+        console.log("[Renderer] saveVisitJson result:", result);
+
         if (result.success) {
           setError("");
-          alert(`Archivo guardado exitosamente en:\n${result.path}`);
+          setSavedFilePath(result.path || "");
+          setSuccessMessage(result.message || "Archivo guardado exitosamente");
+          setShowSuccessToast(true);
         } else {
-          setError(`Error al guardar el archivo: ${result.error || "Error desconocido"}`);
+          setError(
+            `Error al guardar el archivo: ${
+              result.error || "Error desconocido"
+            }`
+          );
         }
       } catch (err) {
         console.error("[Renderer] Error saving file:", err);
-        setError(`Error al guardar el archivo: ${err instanceof Error ? err.message : String(err)}`);
+        setError(
+          `Error al guardar el archivo: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
       }
     } else {
-      console.log('[Renderer] fileSystem not available, using browser download fallback');
+      console.log(
+        "[Renderer] fileSystem not available, using browser download fallback"
+      );
       // Fallback to browser download if not in Electron
       const dataBlob = new Blob([dataStr], { type: "application/json" });
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement("a");
       link.href = url;
-      
+
       // Find "Fecha de la Visita" field from activities
       let fechaVisita = "";
       if (visitData.activities && selectedVisit) {
@@ -242,13 +311,14 @@ export const PatientVisitFormPage: React.FC = () => {
         const visitDateActivityId = selectedVisit.activities.find(
           (activity: any) => activity.isVisitDate === true
         )?.id;
-        
+
         if (visitDateActivityId) {
           const visitDateActivity = visitData.activities.find(
             (activity: any) => activity.id === visitDateActivityId
           );
           if (visitDateActivity) {
-            fechaVisita = visitDateActivity.date || visitDateActivity.value || "";
+            fechaVisita =
+              visitDateActivity.date || visitDateActivity.value || "";
           }
         } else {
           // Fallback: search by name
@@ -256,11 +326,12 @@ export const PatientVisitFormPage: React.FC = () => {
             (activity: any) => activity.name === "Fecha de la Visita"
           );
           if (fechaVisitaActivity) {
-            fechaVisita = fechaVisitaActivity.date || fechaVisitaActivity.value || "";
+            fechaVisita =
+              fechaVisitaActivity.date || fechaVisitaActivity.value || "";
           }
         }
       }
-      
+
       // Build filename: visitName - Nombre y Apellido - Fecha de la Visita
       const filenameParts = [visitName];
       if (nombreApellido) {
@@ -271,13 +342,13 @@ export const PatientVisitFormPage: React.FC = () => {
         const dateOnly = fechaVisita.split("T")[0];
         filenameParts.push(dateOnly);
       }
-      
+
       // Sanitize filename (remove invalid characters for filenames)
       const sanitizedFilename = filenameParts
         .join("-")
         .replace(/[<>:"/\\|?*]/g, "") // Remove invalid filename characters
         .trim();
-      
+
       link.download = `${sanitizedFilename || "visita"}.json`;
       document.body.appendChild(link);
       link.click();
@@ -488,9 +559,7 @@ export const PatientVisitFormPage: React.FC = () => {
             <Button
               onClick={handleNext}
               variant="contained"
-              disabled={
-                !selectedProtocolId || !selectedVisitId
-              }
+              disabled={!selectedProtocolId || !selectedVisitId}
             >
               Siguiente
             </Button>
@@ -590,7 +659,7 @@ export const PatientVisitFormPage: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            minHeight: '70vh',
+            minHeight: "70vh",
           },
         }}
       >
@@ -614,9 +683,9 @@ export const PatientVisitFormPage: React.FC = () => {
             onChange={(e) => setEditedPreviewText(e.target.value)}
             variant="outlined"
             sx={{
-              '& .MuiInputBase-root': {
-                fontFamily: 'monospace',
-                fontSize: '0.875rem',
+              "& .MuiInputBase-root": {
+                fontFamily: "monospace",
+                fontSize: "0.875rem",
               },
             }}
             placeholder="El texto de la historia clínica aparecerá aquí..."
@@ -642,6 +711,40 @@ export const PatientVisitFormPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Toast de éxito al guardar */}
+      <Snackbar
+        open={showSuccessToast}
+        autoHideDuration={6000}
+        onClose={() => setShowSuccessToast(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={() => setShowSuccessToast(false)}
+          severity="success"
+          sx={{ width: "100%", minWidth: 350 }}
+          icon={<CheckCircleIcon />}
+        >
+          <Typography variant="body2" fontWeight={600} gutterBottom>
+            {successMessage}
+          </Typography>
+          {savedFilePath && (
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                mt: 0.5,
+                color: "text.secondary",
+                fontFamily: "monospace",
+                fontSize: "0.75rem",
+                wordBreak: "break-all",
+              }}
+            >
+              {savedFilePath}
+            </Typography>
+          )}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
