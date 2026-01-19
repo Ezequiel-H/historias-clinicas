@@ -34,10 +34,16 @@ class ApiService {
         if (error.response?.status === 401) {
           // Token expirado o inválido
           // Solo redirigir si no estamos en la página de login (para permitir que el componente maneje el error)
-          const isLoginPage = window.location.pathname === '/login' || window.location.pathname === '/signup';
+          const currentPath = window.location.pathname || window.location.hash.replace('#', '');
+          const isLoginPage = currentPath === '/login' || currentPath === '/signup' || currentPath.includes('/login') || currentPath.includes('/signup');
           if (!isLoginPage) {
             localStorage.removeItem('authToken');
-            window.location.href = '/login';
+            // Use hash-based navigation for Electron compatibility
+            if (window.location.hash) {
+              window.location.hash = '#/login';
+            } else {
+              window.location.href = '/login';
+            }
           }
         }
         return Promise.reject(error);
