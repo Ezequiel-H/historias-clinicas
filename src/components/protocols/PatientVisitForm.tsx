@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogActions,
   Tooltip,
+  CircularProgress,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -30,6 +31,7 @@ import {
   calculateMedicationAdherence,
   detectAdherenceProblems,
 } from './shared';
+import { mergeActivitiesWithSystem } from '../../utils/systemActivities';
 
 interface PatientVisitFormProps {
   visit: Visit;
@@ -62,11 +64,31 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
   onCancel,
   initialData,
 }) => {
-  const activities = visit.activities || [];
+  const [activities, setActivities] = useState<Activity[]>(visit.activities || []);
+  const [loadingActivities, setLoadingActivities] = useState(true);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
   const [activityDescriptions, setActivityDescriptions] = useState<Record<string, string>>({});
+  
+  // Load and merge system activities with visit activities
+  useEffect(() => {
+    const loadActivities = async () => {
+      try {
+        setLoadingActivities(true);
+        const mergedActivities = await mergeActivitiesWithSystem(visit.activities || []);
+        setActivities(mergedActivities);
+      } catch (error) {
+        console.error('Error loading system activities:', error);
+        // Fallback to just visit activities if system activities fail to load
+        setActivities(visit.activities || []);
+      } finally {
+        setLoadingActivities(false);
+      }
+    };
+    
+    loadActivities();
+  }, [visit.activities]);
   
   // Initialize form values from imported data if available
   const initializedRef = useRef(false);
@@ -963,6 +985,11 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             description: editedDescription || activity.description,
           };
 
+          // Solo incluir excludeFromAI si es true
+          if (activity.excludeFromAI === true) {
+            activityObj.excludeFromAI = true;
+          }
+
           if (activity.measurementUnit) {
             activityObj.measurementUnit = activity.measurementUnit;
           }
@@ -1167,7 +1194,11 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
         </Alert>
       </Paper>
 
-      {activities.length === 0 ? (
+      {loadingActivities ? (
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+          <CircularProgress />
+        </Box>
+      ) : activities.length === 0 ? (
         <Alert severity="info">
           No hay campos configurados en esta visita.
         </Alert>

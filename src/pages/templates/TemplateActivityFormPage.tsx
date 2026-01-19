@@ -153,6 +153,7 @@ export const TemplateActivityFormPage: React.FC = () => {
     decimalPlaces: 2,
     helpText: '',
     calculationFormula: '', // Fórmula para campos calculados
+    excludeFromAI: false, // Si true, el resultado de esta actividad no se enviará a la IA
   });
   const [optionsText, setOptionsText] = useState('');
   const [options, setOptions] = useState<SelectOption[]>([]);
@@ -300,6 +301,7 @@ export const TemplateActivityFormPage: React.FC = () => {
           decimalPlaces: activity.decimalPlaces ?? 2,
           helpText: activity.helpText || '',
           calculationFormula: activity.calculationFormula || '',
+          excludeFromAI: activity.excludeFromAI || false,
         });
         
         // Cargar opciones si existen
@@ -430,6 +432,8 @@ export const TemplateActivityFormPage: React.FC = () => {
     
     // Siempre enviar helpText, incluso si está vacío, para que se actualice en la DB
     activityData.helpText = formData.helpText || '';
+    // Siempre enviar excludeFromAI
+    activityData.excludeFromAI = formData.excludeFromAI || false;
     if (formData.allowMultiple) {
       activityData.allowMultiple = formData.allowMultiple;
       activityData.repeatCount = formData.repeatCount;
@@ -1174,6 +1178,47 @@ export const TemplateActivityFormPage: React.FC = () => {
               )}
             </Box>
           )}
+
+          <Divider />
+
+          {/* Exclusión de IA - Separado */}
+          <Box sx={{ 
+            p: 2, 
+            mb: 2,
+            bgcolor: formData.excludeFromAI ? 'warning.light' : 'grey.50',
+            borderRadius: 1,
+            border: formData.excludeFromAI ? '2px solid' : '1px solid',
+            borderColor: formData.excludeFromAI ? 'warning.main' : 'divider',
+          }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.excludeFromAI}
+                  onChange={(e) => setFormData({ ...formData, excludeFromAI: e.target.checked })}
+                  sx={{
+                    '&.Mui-checked': {
+                      color: 'warning.main',
+                    },
+                  }}
+                />
+              }
+              label={
+                <Typography 
+                  variant="body1" 
+                  fontWeight={formData.excludeFromAI ? 'bold' : 'normal'}
+                  color={formData.excludeFromAI ? 'warning.dark' : 'text.primary'}
+                >
+                  Excluir de IA (no enviar resultado a la IA)
+                </Typography>
+              }
+              title="Si está marcado, el resultado de esta actividad no se enviará a la IA al generar la historia clínica"
+            />
+            {formData.excludeFromAI && (
+              <Alert severity="warning" sx={{ mt: 1 }}>
+                Esta actividad será excluida del procesamiento de IA al generar la historia clínica.
+              </Alert>
+            )}
+          </Box>
 
           <Divider />
 
