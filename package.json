@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:electron": "tsc -p tsconfig.electron.json && vite build",
-    "electron:dev": "tsc -p tsconfig.electron.json && concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && node scripts/rename-preload.js && vite build",
+    "electron:dev": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && node scripts/rename-preload.js && concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build:electron && electron-builder",
     "electron:pack": "npm run build:electron && electron-builder --dir",
     "lint": "eslint .",
