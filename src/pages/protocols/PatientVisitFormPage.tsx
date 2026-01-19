@@ -82,6 +82,78 @@ export const PatientVisitFormPage: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState("");
   const [savedFilePath, setSavedFilePath] = useState("");
 
+  const extractPatientName = (data: any) => {
+    let nombreApellido = "";
+    if (data?.activities) {
+      const nombreApellidoActivity = data.activities.find(
+        (activity: any) => activity.name === "Nombre y Apellido"
+      );
+      if (nombreApellidoActivity) {
+        nombreApellido = nombreApellidoActivity.value || "";
+      }
+    }
+    return {
+      nombreApellido,
+      patientName: nombreApellido || "paciente-desconocido",
+    };
+  };
+
+  const getVisitDate = (data: any, visit: Visit | null) => {
+    let fechaVisita = "";
+    if (data?.activities && visit) {
+      const visitDateActivityId = visit.activities.find(
+        (activity: any) => activity.isVisitDate === true
+      )?.id;
+
+      if (visitDateActivityId) {
+        const visitDateActivity = data.activities.find(
+          (activity: any) => activity.id === visitDateActivityId
+        );
+        if (visitDateActivity) {
+          fechaVisita = visitDateActivity.date || visitDateActivity.value || "";
+        }
+      } else {
+        const fechaVisitaActivity = data.activities.find(
+          (activity: any) => activity.name === "Fecha de la Visita"
+        );
+        if (fechaVisitaActivity) {
+          fechaVisita = fechaVisitaActivity.date || fechaVisitaActivity.value || "";
+        }
+      }
+    }
+    return fechaVisita;
+  };
+
+  const buildFallbackFilename = (
+    visitName: string,
+    nombreApellido: string,
+    fechaVisita: string
+  ) => {
+    const filenameParts = [visitName];
+    if (nombreApellido) {
+      filenameParts.push(nombreApellido);
+    }
+    if (fechaVisita) {
+      const dateOnly = fechaVisita.split("T")[0];
+      filenameParts.push(dateOnly);
+    }
+
+    return filenameParts
+      .join("-")
+      .replace(/[<>:"/\\|?*]/g, "")
+      .trim();
+  };
+
+  const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  };
+
   // Check for fileSystem availability on mount
   useEffect(() => {
     console.log(
@@ -232,19 +304,7 @@ export const PatientVisitFormPage: React.FC = () => {
     // Extract protocol name
     const protocolName = selectedProtocol.name || "protocolo";
 
-    // Find "Nombre y Apellido" field from activities
-    let nombreApellido = "";
-    if (visitData.activities) {
-      const nombreApellidoActivity = visitData.activities.find(
-        (activity: any) => activity.name === "Nombre y Apellido"
-      );
-      if (nombreApellidoActivity) {
-        nombreApellido = nombreApellidoActivity.value || "";
-      }
-    }
-
-    // Use patient name or fallback
-    const patientName = nombreApellido || "paciente-desconocido";
+    const { nombreApellido, patientName } = extractPatientName(visitData);
 
     // Check if we're in Electron and fileSystem API is available
     console.log("[Renderer] Checking fileSystem availability:", {
@@ -304,50 +364,12 @@ export const PatientVisitFormPage: React.FC = () => {
       const link = document.createElement("a");
       link.href = url;
 
-      // Find "Fecha de la Visita" field from activities
-      let fechaVisita = "";
-      if (visitData.activities && selectedVisit) {
-        // First try to find by isVisitDate flag
-        const visitDateActivityId = selectedVisit.activities.find(
-          (activity: any) => activity.isVisitDate === true
-        )?.id;
-
-        if (visitDateActivityId) {
-          const visitDateActivity = visitData.activities.find(
-            (activity: any) => activity.id === visitDateActivityId
-          );
-          if (visitDateActivity) {
-            fechaVisita =
-              visitDateActivity.date || visitDateActivity.value || "";
-          }
-        } else {
-          // Fallback: search by name
-          const fechaVisitaActivity = visitData.activities.find(
-            (activity: any) => activity.name === "Fecha de la Visita"
-          );
-          if (fechaVisitaActivity) {
-            fechaVisita =
-              fechaVisitaActivity.date || fechaVisitaActivity.value || "";
-          }
-        }
-      }
-
-      // Build filename: visitName - Nombre y Apellido - Fecha de la Visita
-      const filenameParts = [visitName];
-      if (nombreApellido) {
-        filenameParts.push(nombreApellido);
-      }
-      if (fechaVisita) {
-        // Format date if needed (remove time if present)
-        const dateOnly = fechaVisita.split("T")[0];
-        filenameParts.push(dateOnly);
-      }
-
-      // Sanitize filename (remove invalid characters for filenames)
-      const sanitizedFilename = filenameParts
-        .join("-")
-        .replace(/[<>:"/\\|?*]/g, "") // Remove invalid filename characters
-        .trim();
+      const fechaVisita = getVisitDate(visitData, selectedVisit);
+      const sanitizedFilename = buildFallbackFilename(
+        visitName,
+        nombreApellido,
+        fechaVisita
+      );
 
       link.download = `${sanitizedFilename || "visita"}.json`;
       document.body.appendChild(link);
@@ -401,14 +423,58 @@ export const PatientVisitFormPage: React.FC = () => {
         textToUse
       );
 
-      // Descargar el PDF
+      const visitName = visitData.visitName || selectedVisit?.name || "visita";
+      const protocolName = selectedProtocol?.name || "protocolo";
+      const { nombreApellido, patientName } = extractPatientName(visitData);
+
+      const fileSystemAvailable =
+        window.fileSystem || (await waitForFileSystem(1000));
+
+      if (fileSystemAvailable && window.fileSystem) {
+        try {
+          const pdfBase64 = arrayBufferToBase64(await blob.arrayBuffer());
+          const result = await window.fileSystem.saveVisitPdf({
+            protocolName,
+            patientName,
+            visitName,
+            pdfBase64,
+          });
+
+          if (result.success) {
+            setError("");
+            setSavedFilePath(result.path || "");
+            setSuccessMessage(result.message || "Archivo guardado exitosamente");
+            setShowSuccessToast(true);
+            setPreviewDialogOpen(false);
+            return;
+          }
+
+          setError(
+            `Error al guardar el archivo: ${result.error || "Error desconocido"}`
+          );
+          return;
+        } catch (err) {
+          console.error("[Renderer] Error saving PDF:", err);
+          setError(
+            `Error al guardar el archivo: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+          return;
+        }
+      }
+
+      // Descargar el PDF en el navegador si no está disponible fileSystem
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      const fileName = `historia-clinica-${
-        selectedProtocol?.code || "protocolo"
-      }-${selectedVisit?.name.replace(/\s+/g, "-") || "visita"}.pdf`;
-      link.download = fileName;
+      const fechaVisita = getVisitDate(visitData, selectedVisit);
+      const sanitizedFilename = buildFallbackFilename(
+        visitName,
+        nombreApellido,
+        fechaVisita
+      );
+      link.download = `${sanitizedFilename || "visita"}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

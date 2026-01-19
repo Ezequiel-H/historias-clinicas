@@ -53,6 +53,20 @@ try {
       });
       return ipcRenderer.invoke('save-visit-json', data);
     },
+    saveVisitPdf: (data: {
+      protocolName: string;
+      patientName: string;
+      visitName: string;
+      pdfBase64: string;
+    }) => {
+      console.log('[Preload] saveVisitPdf called with:', {
+        protocolName: data.protocolName,
+        patientName: data.patientName,
+        visitName: data.visitName,
+        pdfBase64Length: data.pdfBase64.length,
+      });
+      return ipcRenderer.invoke('save-visit-pdf', data);
+    },
   });
 
   console.log('[Preload] fileSystem API exposed successfully');

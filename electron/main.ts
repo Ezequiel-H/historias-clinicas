@@ -193,3 +193,76 @@ ipcMain.handle('save-visit-json', async (_, data: {
   }
 });
 
+ipcMain.handle('save-visit-pdf', async (_, data: {
+  protocolName: string;
+  patientName: string;
+  visitName: string;
+  pdfBase64: string;
+}) => {
+  console.log('[IPC] save-visit-pdf called with data:', {
+    protocolName: data.protocolName,
+    patientName: data.patientName,
+    visitName: data.visitName,
+    pdfBase64Length: data.pdfBase64.length,
+  });
+
+  try {
+    const downloadsPath = app.getPath('downloads');
+    console.log('[IPC] Downloads path:', downloadsPath);
+
+    // Sanitize folder and file names
+    const sanitizedProtocolName = sanitizeFileName(data.protocolName);
+    const sanitizedPatientName = sanitizeFileName(data.patientName);
+    const sanitizedVisitName = sanitizeFileName(data.visitName);
+
+    console.log('[IPC] Sanitized names:', {
+      protocol: sanitizedProtocolName,
+      patient: sanitizedPatientName,
+      visit: sanitizedVisitName,
+    });
+
+    // Create folder structure: Downloads/protocol name/patient name
+    const protocolFolder = join(downloadsPath, sanitizedProtocolName);
+    const patientFolder = join(protocolFolder, sanitizedPatientName);
+
+    console.log('[IPC] Folder paths:', {
+      protocolFolder,
+      patientFolder,
+    });
+
+    // Create folders if they don't exist
+    if (!existsSync(protocolFolder)) {
+      console.log('[IPC] Creating protocol folder:', protocolFolder);
+      await fs.mkdir(protocolFolder, { recursive: true });
+    }
+    if (!existsSync(patientFolder)) {
+      console.log('[IPC] Creating patient folder:', patientFolder);
+      await fs.mkdir(patientFolder, { recursive: true });
+    }
+
+    // Create filename: visitName.pdf
+    const fileName = `${sanitizedVisitName}.pdf`;
+    const filePath = join(patientFolder, fileName);
+
+    console.log('[IPC] Writing file to:', filePath);
+
+    // Write the PDF file
+    const pdfBuffer = Buffer.from(data.pdfBase64, 'base64');
+    await fs.writeFile(filePath, pdfBuffer);
+
+    console.log('[IPC] File saved successfully:', filePath);
+
+    return { 
+      success: true, 
+      path: filePath,
+      message: `Archivo guardado en: ${filePath}`
+    };
+  } catch (error) {
+    console.error('[IPC] Error saving visit PDF:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
+

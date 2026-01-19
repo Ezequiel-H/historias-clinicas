@@ -18,6 +18,17 @@ export interface FileSystem {
     message?: string;
     error?: string;
   }>;
+  saveVisitPdf: (data: {
+    protocolName: string;
+    patientName: string;
+    visitName: string;
+    pdfBase64: string;
+  }) => Promise<{
+    success: boolean;
+    path?: string;
+    message?: string;
+    error?: string;
+  }>;
 }
 
 declare global {
