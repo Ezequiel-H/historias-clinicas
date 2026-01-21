@@ -1198,7 +1198,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
                     <Box sx={{ flex: 1 }}>
                       {fieldElement}
                     </Box>
-                    <Tooltip title={hasDescription ? "Editar aclaración para IA" : "Agregar aclaración para IA"}>
+                    <Tooltip title={hasDescription ? "Editar aclaración para el sistema" : "Agregar aclaración para el sistema"}>
                       <IconButton
                         size="small"
                         onClick={() => handleOpenDescriptionDialog(act.id)}
@@ -1264,7 +1264,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
         fullWidth
       >
         <DialogTitle>
-          Aclaración para IA
+          Aclaración para el sistema
           {editingActivityId && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               {activities.find(a => a.id === editingActivityId)?.name}
@@ -1281,8 +1281,8 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             rows={4}
             value={descriptionText}
             onChange={(e) => setDescriptionText(e.target.value)}
-            placeholder="Ingrese una aclaración o descripción adicional para ayudar a la IA a entender mejor este campo..."
-            helperText="Esta aclaración se guardará en el campo description y ayudará a la IA a procesar mejor los datos."
+            placeholder="Ingrese una aclaración o descripción adicional para ayudar al sistema a entender mejor este campo..."
+            helperText="Esta aclaración se guardará en el campo description y ayudará al sistema a procesar mejor los datos."
           />
         </DialogContent>
         <DialogActions>

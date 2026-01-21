@@ -7,6 +7,15 @@ export interface IpcRenderer {
 
 export interface FileSystem {
   getDownloadsPath: () => Promise<string>;
+  deleteVisitJson: (data: {
+    protocolName: string;
+    patientName: string;
+    visitName: string;
+  }) => Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }>;
   saveVisitJson: (data: {
     protocolName: string;
     patientName: string;
