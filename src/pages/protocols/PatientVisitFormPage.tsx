@@ -19,12 +19,14 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Snackbar,
 } from "@mui/material";
 import {
   ArrowBack as BackIcon,
   Download as DownloadIcon,
   Description as DescriptionIcon,
   Edit as EditIcon,
+  CheckCircle as CheckCircleIcon,
 } from "@mui/icons-material";
 import protocolService from "../../services/protocolService";
 import type { Protocol, Visit } from "../../types";
@@ -35,6 +37,26 @@ const steps = [
   "Completar Formulario",
   "Revisar y Descargar",
 ];
+
+// Helper function to wait for fileSystem API to be available
+const waitForFileSystem = async (
+  maxWaitMs: number = 2000
+): Promise<boolean> => {
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    if (window.fileSystem) {
+      console.log("[Renderer] fileSystem API is now available");
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  console.warn(
+    "[Renderer] fileSystem API not available after waiting",
+    maxWaitMs,
+    "ms"
+  );
+  return false;
+};
 
 export const PatientVisitFormPage: React.FC = () => {
   const navigate = useNavigate();
@@ -56,6 +78,105 @@ export const PatientVisitFormPage: React.FC = () => {
   const [previewText, setPreviewText] = useState("");
   const [editedPreviewText, setEditedPreviewText] = useState("");
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [savedFilePath, setSavedFilePath] = useState("");
+
+  const extractPatientName = (data: any) => {
+    let nombreApellido = "";
+    if (data?.activities) {
+      const nombreApellidoActivity = data.activities.find(
+        (activity: any) => activity.name === "Nombre y Apellido"
+      );
+      if (nombreApellidoActivity) {
+        nombreApellido = nombreApellidoActivity.value || "";
+      }
+    }
+    return {
+      nombreApellido,
+      patientName: nombreApellido || "paciente-desconocido",
+    };
+  };
+
+  const getVisitDate = (data: any, visit: Visit | null) => {
+    let fechaVisita = "";
+    if (data?.activities && visit) {
+      const visitDateActivityId = visit.activities.find(
+        (activity: any) => activity.isVisitDate === true
+      )?.id;
+
+      if (visitDateActivityId) {
+        const visitDateActivity = data.activities.find(
+          (activity: any) => activity.id === visitDateActivityId
+        );
+        if (visitDateActivity) {
+          fechaVisita = visitDateActivity.date || visitDateActivity.value || "";
+        }
+      } else {
+        const fechaVisitaActivity = data.activities.find(
+          (activity: any) => activity.name === "Fecha de la Visita"
+        );
+        if (fechaVisitaActivity) {
+          fechaVisita = fechaVisitaActivity.date || fechaVisitaActivity.value || "";
+        }
+      }
+    }
+    return fechaVisita;
+  };
+
+  const buildFallbackFilename = (
+    visitName: string,
+    nombreApellido: string,
+    fechaVisita: string
+  ) => {
+    const filenameParts = [visitName];
+    if (nombreApellido) {
+      filenameParts.push(nombreApellido);
+    }
+    if (fechaVisita) {
+      const dateOnly = fechaVisita.split("T")[0];
+      filenameParts.push(dateOnly);
+    }
+
+    return filenameParts
+      .join("-")
+      .replace(/[<>:"/\\|?*]/g, "")
+      .trim();
+  };
+
+  const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  };
+
+  // Check for fileSystem availability on mount
+  useEffect(() => {
+    console.log(
+      "[Renderer] Component mounted, checking fileSystem availability:",
+      {
+        hasFileSystem: !!window.fileSystem,
+        hasIpcRenderer: !!window.ipcRenderer,
+        allWindowKeys: Object.keys(window).filter(
+          (key) => key.startsWith("fileSystem") || key.startsWith("ipcRenderer")
+        ),
+      }
+    );
+
+    // Wait a bit and check again in case preload is still loading
+    const checkInterval = setTimeout(() => {
+      console.log("[Renderer] Re-checking fileSystem after delay:", {
+        hasFileSystem: !!window.fileSystem,
+        fileSystemKeys: window.fileSystem ? Object.keys(window.fileSystem) : [],
+      });
+    }, 500);
+
+    return () => clearTimeout(checkInterval);
+  }, []);
 
   useEffect(() => {
     // Check if we have imported data from location state
@@ -86,38 +207,42 @@ export const PatientVisitFormPage: React.FC = () => {
       setLoading(true);
       const response = await protocolService.getProtocols(1, 100, "active");
       setProtocols(response.data);
-      
+
       // If we have imported data, try to find matching protocol and visit
       const dataToProcess = importedDataToProcess || importedData;
       if (dataToProcess) {
         const protocolName = dataToProcess.protocolName;
         const visitName = dataToProcess.visitName;
-        
+
         if (protocolName && visitName) {
           // Find protocol by name
           const matchingProtocol = response.data.find(
             (p: Protocol) => p.name === protocolName
           );
-          
+
           if (matchingProtocol) {
             setSelectedProtocolId(matchingProtocol.id);
             // Load the protocol to get visits
-            const protocolResponse = await protocolService.getProtocolById(matchingProtocol.id);
+            const protocolResponse = await protocolService.getProtocolById(
+              matchingProtocol.id
+            );
             const protocol = protocolResponse.data;
             setSelectedProtocol(protocol);
-            
+
             // Find visit by name
             const matchingVisit = protocol.visits.find(
               (v: Visit) => v.name === visitName
             );
-            
+
             if (matchingVisit) {
               setSelectedVisitId(matchingVisit.id);
               setSelectedVisit(matchingVisit);
               // Auto-advance to form step
               setActiveStep(1);
             } else {
-              setError(`No se encontró la visita "${visitName}" en el protocolo "${protocolName}".`);
+              setError(
+                `No se encontró la visita "${visitName}" en el protocolo "${protocolName}".`
+              );
             }
           } else {
             setError(`No se encontró el protocolo "${protocolName}".`);
@@ -168,77 +293,90 @@ export const PatientVisitFormPage: React.FC = () => {
     setActiveStep(2);
   };
 
-  const handleDownload = () => {
-    if (!visitData) return;
+  const handleDownload = async () => {
+    if (!visitData || !selectedProtocol) return;
 
     const dataStr = JSON.stringify(visitData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement("a");
-    link.href = url;
-    
+
     // Extract visitName
     const visitName = visitData.visitName || selectedVisit?.name || "visita";
-    
-    // Find "Nombre y Apellido" field from activities
-    let nombreApellido = "";
-    if (visitData.activities) {
-      const nombreApellidoActivity = visitData.activities.find(
-        (activity: any) => activity.name === "Nombre y Apellido"
+
+    // Extract protocol name
+    const protocolName = selectedProtocol.name || "protocolo";
+
+    const { nombreApellido, patientName } = extractPatientName(visitData);
+
+    // Check if we're in Electron and fileSystem API is available
+    console.log("[Renderer] Checking fileSystem availability:", {
+      hasFileSystem: !!window.fileSystem,
+      fileSystemKeys: window.fileSystem ? Object.keys(window.fileSystem) : [],
+    });
+
+    // Wait for fileSystem to be available (in case preload is still loading)
+    const fileSystemAvailable =
+      window.fileSystem || (await waitForFileSystem(1000));
+
+    if (fileSystemAvailable && window.fileSystem) {
+      console.log("[Renderer] Calling saveVisitJson with:", {
+        protocolName,
+        patientName,
+        visitName,
+        jsonContentLength: dataStr.length,
+      });
+
+      try {
+        const result = await window.fileSystem.saveVisitJson({
+          protocolName,
+          patientName,
+          visitName,
+          jsonContent: dataStr,
+        });
+
+        console.log("[Renderer] saveVisitJson result:", result);
+
+        if (result.success) {
+          setError("");
+          setSavedFilePath(result.path || "");
+          setSuccessMessage(result.message || "Archivo guardado exitosamente");
+          setShowSuccessToast(true);
+        } else {
+          setError(
+            `Error al guardar el archivo: ${
+              result.error || "Error desconocido"
+            }`
+          );
+        }
+      } catch (err) {
+        console.error("[Renderer] Error saving file:", err);
+        setError(
+          `Error al guardar el archivo: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    } else {
+      console.log(
+        "[Renderer] fileSystem not available, using browser download fallback"
       );
-      if (nombreApellidoActivity) {
-        nombreApellido = nombreApellidoActivity.value || "";
-      }
+      // Fallback to browser download if not in Electron
+      const dataBlob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement("a");
+      link.href = url;
+
+      const fechaVisita = getVisitDate(visitData, selectedVisit);
+      const sanitizedFilename = buildFallbackFilename(
+        visitName,
+        nombreApellido,
+        fechaVisita
+      );
+
+      link.download = `${sanitizedFilename || "visita"}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     }
-    
-    // Find "Fecha de la Visita" field from activities
-    let fechaVisita = "";
-    if (visitData.activities && selectedVisit) {
-      // First try to find by isVisitDate flag
-      const visitDateActivityId = selectedVisit.activities.find(
-        (activity: any) => activity.isVisitDate === true
-      )?.id;
-      
-      if (visitDateActivityId) {
-        const visitDateActivity = visitData.activities.find(
-          (activity: any) => activity.id === visitDateActivityId
-        );
-        if (visitDateActivity) {
-          fechaVisita = visitDateActivity.date || visitDateActivity.value || "";
-        }
-      } else {
-        // Fallback: search by name
-        const fechaVisitaActivity = visitData.activities.find(
-          (activity: any) => activity.name === "Fecha de la Visita"
-        );
-        if (fechaVisitaActivity) {
-          fechaVisita = fechaVisitaActivity.date || fechaVisitaActivity.value || "";
-        }
-      }
-    }
-    
-    // Build filename: visitName - Nombre y Apellido - Fecha de la Visita
-    const filenameParts = [visitName];
-    if (nombreApellido) {
-      filenameParts.push(nombreApellido);
-    }
-    if (fechaVisita) {
-      // Format date if needed (remove time if present)
-      const dateOnly = fechaVisita.split("T")[0];
-      filenameParts.push(dateOnly);
-    }
-    
-    // Sanitize filename (remove invalid characters for filenames)
-    const sanitizedFilename = filenameParts
-      .join("-")
-      .replace(/[<>:"/\\|?*]/g, "") // Remove invalid filename characters
-      .trim();
-    
-    link.download = `${sanitizedFilename || "visita"}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   const handlePreviewClinicalHistory = async () => {
@@ -285,14 +423,58 @@ export const PatientVisitFormPage: React.FC = () => {
         textToUse
       );
 
-      // Descargar el PDF
+      const visitName = visitData.visitName || selectedVisit?.name || "visita";
+      const protocolName = selectedProtocol?.name || "protocolo";
+      const { nombreApellido, patientName } = extractPatientName(visitData);
+
+      const fileSystemAvailable =
+        window.fileSystem || (await waitForFileSystem(1000));
+
+      if (fileSystemAvailable && window.fileSystem) {
+        try {
+          const pdfBase64 = arrayBufferToBase64(await blob.arrayBuffer());
+          const result = await window.fileSystem.saveVisitPdf({
+            protocolName,
+            patientName,
+            visitName,
+            pdfBase64,
+          });
+
+          if (result.success) {
+            setError("");
+            setSavedFilePath(result.path || "");
+            setSuccessMessage(result.message || "Archivo guardado exitosamente");
+            setShowSuccessToast(true);
+            setPreviewDialogOpen(false);
+            return;
+          }
+
+          setError(
+            `Error al guardar el archivo: ${result.error || "Error desconocido"}`
+          );
+          return;
+        } catch (err) {
+          console.error("[Renderer] Error saving PDF:", err);
+          setError(
+            `Error al guardar el archivo: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+          return;
+        }
+      }
+
+      // Descargar el PDF en el navegador si no está disponible fileSystem
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      const fileName = `historia-clinica-${
-        selectedProtocol?.code || "protocolo"
-      }-${selectedVisit?.name.replace(/\s+/g, "-") || "visita"}.pdf`;
-      link.download = fileName;
+      const fechaVisita = getVisitDate(visitData, selectedVisit);
+      const sanitizedFilename = buildFallbackFilename(
+        visitName,
+        nombreApellido,
+        fechaVisita
+      );
+      link.download = `${sanitizedFilename || "visita"}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -443,9 +625,7 @@ export const PatientVisitFormPage: React.FC = () => {
             <Button
               onClick={handleNext}
               variant="contained"
-              disabled={
-                !selectedProtocolId || !selectedVisitId
-              }
+              disabled={!selectedProtocolId || !selectedVisitId}
             >
               Siguiente
             </Button>
@@ -545,7 +725,7 @@ export const PatientVisitFormPage: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            minHeight: '70vh',
+            minHeight: "70vh",
           },
         }}
       >
@@ -569,9 +749,9 @@ export const PatientVisitFormPage: React.FC = () => {
             onChange={(e) => setEditedPreviewText(e.target.value)}
             variant="outlined"
             sx={{
-              '& .MuiInputBase-root': {
-                fontFamily: 'monospace',
-                fontSize: '0.875rem',
+              "& .MuiInputBase-root": {
+                fontFamily: "monospace",
+                fontSize: "0.875rem",
               },
             }}
             placeholder="El texto de la historia clínica aparecerá aquí..."
@@ -597,6 +777,40 @@ export const PatientVisitFormPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Toast de éxito al guardar */}
+      <Snackbar
+        open={showSuccessToast}
+        autoHideDuration={6000}
+        onClose={() => setShowSuccessToast(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={() => setShowSuccessToast(false)}
+          severity="success"
+          sx={{ width: "100%", minWidth: 350 }}
+          icon={<CheckCircleIcon />}
+        >
+          <Typography variant="body2" fontWeight={600} gutterBottom>
+            {successMessage}
+          </Typography>
+          {savedFilePath && (
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                mt: 0.5,
+                color: "text.secondary",
+                fontFamily: "monospace",
+                fontSize: "0.75rem",
+                wordBreak: "break-all",
+              }}
+            >
+              {savedFilePath}
+            </Typography>
+          )}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
