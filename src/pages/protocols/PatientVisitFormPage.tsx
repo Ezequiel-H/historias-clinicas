@@ -288,8 +288,90 @@ export const PatientVisitFormPage: React.FC = () => {
     }
   };
 
-  const handleFormComplete = (data: any) => {
+  const handleFormComplete = async (data: any) => {
     setVisitData(data);
+    
+    // Extraer información necesaria
+    const visitName = data.visitName || selectedVisit?.name || "visita";
+    const protocolName = selectedProtocol?.name || "protocolo";
+    const { nombreApellido, patientName } = extractPatientName(data);
+
+    // Eliminar el JSON anterior antes de guardar el nuevo
+    const fileSystemAvailable =
+      window.fileSystem || (await waitForFileSystem(1000));
+
+    if (fileSystemAvailable && window.fileSystem) {
+      try {
+        // Eliminar JSON anterior si existe
+        await window.fileSystem.deleteVisitJson({
+          protocolName,
+          patientName,
+          visitName,
+        });
+        console.log("[Renderer] Previous JSON deleted (if existed)");
+      } catch (err) {
+        console.error("[Renderer] Error deleting previous JSON:", err);
+        // No mostrar error al usuario, solo loguear
+      }
+    }
+
+    // Descargar automáticamente el nuevo JSON
+    const dataStr = JSON.stringify(data, null, 2);
+
+    if (fileSystemAvailable && window.fileSystem) {
+      try {
+        const result = await window.fileSystem.saveVisitJson({
+          protocolName,
+          patientName,
+          visitName,
+          jsonContent: dataStr,
+        });
+
+        if (result.success) {
+          setError("");
+          setSavedFilePath(result.path || "");
+          setSuccessMessage(result.message || "Archivo guardado exitosamente");
+          setShowSuccessToast(true);
+        } else {
+          setError(
+            `Error al guardar el archivo: ${
+              result.error || "Error desconocido"
+            }`
+          );
+        }
+      } catch (err) {
+        console.error("[Renderer] Error saving file:", err);
+        setError(
+          `Error al guardar el archivo: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    } else {
+      // Fallback to browser download if not in Electron
+      const dataBlob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement("a");
+      link.href = url;
+
+      const fechaVisita = getVisitDate(data, selectedVisit);
+      const sanitizedFilename = buildFallbackFilename(
+        visitName,
+        nombreApellido,
+        fechaVisita
+      );
+
+      link.download = `${sanitizedFilename || "visita"}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      setSuccessMessage("Archivo descargado exitosamente");
+      setShowSuccessToast(true);
+    }
+    
+    // Avanzar al paso 2 (pero sin mostrar el JSON)
     setActiveStep(2);
   };
 
@@ -647,37 +729,13 @@ export const PatientVisitFormPage: React.FC = () => {
       {activeStep === 2 && visitData && (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-            Revisar y Descargar
+            Visita Completada
           </Typography>
 
           <Alert severity="success" sx={{ mb: 3 }}>
-            El formulario se completó correctamente. Puedes revisar el JSON
-            generado y descargarlo.
+            El formulario se completó correctamente. El archivo JSON se ha descargado automáticamente.
             <strong> No se guardó nada en la base de datos.</strong>
           </Alert>
-
-          <Box
-            sx={{
-              p: 2,
-              bgcolor: "grey.50",
-              borderRadius: 1,
-              border: "1px solid",
-              borderColor: "grey.300",
-              maxHeight: "60vh",
-              overflow: "auto",
-              mb: 3,
-            }}
-          >
-            <pre
-              style={{
-                margin: 0,
-                fontSize: "0.875rem",
-                fontFamily: "monospace",
-              }}
-            >
-              {JSON.stringify(visitData, null, 2)}
-            </pre>
-          </Box>
 
           <Box display="flex" justifyContent="space-between" gap={2}>
             <Button
@@ -693,7 +751,7 @@ export const PatientVisitFormPage: React.FC = () => {
                 variant="outlined"
                 startIcon={<DownloadIcon />}
               >
-                Descargar JSON
+                Descargar JSON Nuevamente
               </Button>
               <Button
                 onClick={handlePreviewClinicalHistory}
@@ -737,7 +795,7 @@ export const PatientVisitFormPage: React.FC = () => {
             </Typography>
           </Box>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Revisa y edita el texto generado por la IA antes de generar el PDF.
+            Revisa y edita el texto generado por el sistema antes de generar el PDF.
           </Typography>
         </DialogTitle>
         <DialogContent>

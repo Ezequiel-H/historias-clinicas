@@ -28,11 +28,11 @@ class ProtocolService {
     return apiService.delete<ApiResponse<null>>(`/protocols/${id}`);
   }
 
-  // Extraer datos de documento de protocolo (usando IA)
+  // Extraer datos de documento de protocolo (usando sistema automatizado)
   async extractProtocolData(_file: File, onProgress?: (progress: number) => void): Promise<ApiResponse<Partial<Protocol>>> {
-    // TODO: Conectar con la API real que usa IA para extraer datos
+    // TODO: Conectar con la API real que usa el sistema para extraer datos
     // return apiService.uploadFile<ApiResponse<Partial<Protocol>>>('/protocols/extract', file, onProgress);
-    
+
     // Mock temporal
     return new Promise((resolve) => {
       let progress = 0;
@@ -47,7 +47,7 @@ class ProtocolService {
               name: 'Protocolo extraído del documento',
               code: 'EXT-' + Date.now(),
               sponsor: 'Sponsor extraído',
-              description: 'Descripción extraída automáticamente del documento mediante IA',
+              description: 'Descripción extraída automáticamente del documento mediante el sistema',
               status: 'draft',
             },
             message: 'Datos extraídos exitosamente. Por favor revise y ajuste si es necesario.',
@@ -87,7 +87,7 @@ class ProtocolService {
   async previewClinicalHistory(protocolId: string, visitId: string, visitData: any): Promise<string> {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
     const token = localStorage.getItem('authToken');
-    
+
     const response = await axios.post(
       `${API_BASE_URL}/protocols/${protocolId}/visits/${visitId}/preview-clinical-history`,
       { visitData },
@@ -98,20 +98,20 @@ class ProtocolService {
         },
       }
     );
-    
+
     return response.data.data.clinicalHistoryText;
   }
 
   // Generar historia clínica con IA
   async generateClinicalHistory(
-    protocolId: string, 
-    visitId: string, 
-    visitData: any, 
+    protocolId: string,
+    visitId: string,
+    visitData: any,
     clinicalHistoryText?: string
   ): Promise<Blob> {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
     const token = localStorage.getItem('authToken');
-    
+
     const response = await axios.post(
       `${API_BASE_URL}/protocols/${protocolId}/visits/${visitId}/generate-clinical-history`,
       { visitData, clinicalHistoryText },
@@ -123,7 +123,7 @@ class ProtocolService {
         },
       }
     );
-    
+
     return response.data;
   }
 

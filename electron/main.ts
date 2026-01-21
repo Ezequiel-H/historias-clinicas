@@ -121,6 +121,57 @@ ipcMain.handle('get-downloads-path', () => {
   return path;
 });
 
+ipcMain.handle('delete-visit-json', async (_, data: {
+  protocolName: string;
+  patientName: string;
+  visitName: string;
+}) => {
+  console.log('[IPC] delete-visit-json called with data:', {
+    protocolName: data.protocolName,
+    patientName: data.patientName,
+    visitName: data.visitName,
+  });
+
+  try {
+    const downloadsPath = app.getPath('downloads');
+
+    // Sanitize folder and file names
+    const sanitizedProtocolName = sanitizeFileName(data.protocolName);
+    const sanitizedPatientName = sanitizeFileName(data.patientName);
+    const sanitizedVisitName = sanitizeFileName(data.visitName);
+
+    // Create folder structure: Downloads/protocol name/patient name
+    const protocolFolder = join(downloadsPath, sanitizedProtocolName);
+    const patientFolder = join(protocolFolder, sanitizedPatientName);
+
+    // Create filename: visitName.json
+    const fileName = `${sanitizedVisitName}.json`;
+    const filePath = join(patientFolder, fileName);
+
+    // Check if file exists and delete it
+    if (existsSync(filePath)) {
+      await fs.unlink(filePath);
+      console.log('[IPC] File deleted successfully:', filePath);
+      return {
+        success: true,
+        message: `Archivo eliminado: ${filePath}`
+      };
+    } else {
+      console.log('[IPC] File does not exist, nothing to delete:', filePath);
+      return {
+        success: true,
+        message: 'No se encontró archivo para eliminar'
+      };
+    }
+  } catch (error) {
+    console.error('[IPC] Error deleting visit JSON:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
+
 ipcMain.handle('save-visit-json', async (_, data: {
   protocolName: string;
   patientName: string;
@@ -133,31 +184,31 @@ ipcMain.handle('save-visit-json', async (_, data: {
     visitName: data.visitName,
     jsonContentLength: data.jsonContent.length,
   });
-  
+
   try {
     const downloadsPath = app.getPath('downloads');
     console.log('[IPC] Downloads path:', downloadsPath);
-    
+
     // Sanitize folder and file names
     const sanitizedProtocolName = sanitizeFileName(data.protocolName);
     const sanitizedPatientName = sanitizeFileName(data.patientName);
     const sanitizedVisitName = sanitizeFileName(data.visitName);
-    
+
     console.log('[IPC] Sanitized names:', {
       protocol: sanitizedProtocolName,
       patient: sanitizedPatientName,
       visit: sanitizedVisitName,
     });
-    
+
     // Create folder structure: Downloads/protocol name/patient name
     const protocolFolder = join(downloadsPath, sanitizedProtocolName);
     const patientFolder = join(protocolFolder, sanitizedPatientName);
-    
+
     console.log('[IPC] Folder paths:', {
       protocolFolder,
       patientFolder,
     });
-    
+
     // Create folders if they don't exist
     if (!existsSync(protocolFolder)) {
       console.log('[IPC] Creating protocol folder:', protocolFolder);
@@ -167,27 +218,27 @@ ipcMain.handle('save-visit-json', async (_, data: {
       console.log('[IPC] Creating patient folder:', patientFolder);
       await fs.mkdir(patientFolder, { recursive: true });
     }
-    
+
     // Create filename: visitName.json
     const fileName = `${sanitizedVisitName}.json`;
     const filePath = join(patientFolder, fileName);
-    
+
     console.log('[IPC] Writing file to:', filePath);
-    
+
     // Write the JSON file
     await fs.writeFile(filePath, data.jsonContent, 'utf-8');
-    
+
     console.log('[IPC] File saved successfully:', filePath);
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       path: filePath,
       message: `Archivo guardado en: ${filePath}`
     };
   } catch (error) {
     console.error('[IPC] Error saving visit JSON:', error);
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: error instanceof Error ? error.message : String(error)
     };
   }
@@ -252,15 +303,15 @@ ipcMain.handle('save-visit-pdf', async (_, data: {
 
     console.log('[IPC] File saved successfully:', filePath);
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       path: filePath,
       message: `Archivo guardado en: ${filePath}`
     };
   } catch (error) {
     console.error('[IPC] Error saving visit PDF:', error);
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: error instanceof Error ? error.message : String(error)
     };
   }

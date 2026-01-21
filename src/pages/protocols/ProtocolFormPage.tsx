@@ -168,7 +168,7 @@ export const ProtocolFormPage: React.FC = () => {
           </Typography>
           <Typography variant="body2" sx={{ mb: 2 }}>
             Puede cargar un documento de protocolo (PDF, Word, etc.) y el sistema extraerá
-            automáticamente la información relevante usando inteligencia artificial.
+            automáticamente la información relevante usando procesamiento automatizado.
           </Typography>
           <Box>
             <input

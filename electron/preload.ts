@@ -39,6 +39,18 @@ try {
       console.log('[Preload] getDownloadsPath called');
       return ipcRenderer.invoke('get-downloads-path');
     },
+    deleteVisitJson: (data: {
+      protocolName: string;
+      patientName: string;
+      visitName: string;
+    }) => {
+      console.log('[Preload] deleteVisitJson called with:', {
+        protocolName: data.protocolName,
+        patientName: data.patientName,
+        visitName: data.visitName,
+      });
+      return ipcRenderer.invoke('delete-visit-json', data);
+    },
     saveVisitJson: (data: {
       protocolName: string;
       patientName: string;

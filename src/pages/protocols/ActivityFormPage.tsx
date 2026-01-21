@@ -764,14 +764,14 @@ export const ActivityFormPage: React.FC = () => {
           />
 
           <TextField
-            label="Instrucciones para la IA (Opcional)"
+            label="Instrucciones para el sistema (Opcional)"
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             fullWidth
             multiline
             rows={3}
-            placeholder="Instrucciones para la IA que procesará las respuestas y escribirá la historia clínica. Ej: 'Si el valor es mayor a 150, mencionar riesgo cardiovascular'"
-            helperText="Este texto será usado por la IA para interpretar y documentar las respuestas en la historia clínica"
+            placeholder="Instrucciones para el sistema que procesará las respuestas y escribirá la historia clínica. Ej: 'Si el valor es mayor a 150, mencionar riesgo cardiovascular'"
+            helperText="Este texto será usado por el sistema para interpretar y documentar las respuestas en la historia clínica"
           />
 
           <Divider />
