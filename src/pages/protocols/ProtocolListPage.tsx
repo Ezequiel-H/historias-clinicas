@@ -22,11 +22,14 @@ import {
   DialogActions,
   CircularProgress,
   Alert,
+  LinearProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Search as SearchIcon,
+  Upload as UploadIcon,
+  Description as DescriptionIcon,
 } from '@mui/icons-material';
 import type { Protocol } from '../../types';
 import protocolService from '../../services/protocolService';
@@ -40,6 +43,9 @@ export const ProtocolListPage: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [protocolToDelete, setProtocolToDelete] = useState<Protocol | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generatingProgress, setGeneratingProgress] = useState(0);
 
   useEffect(() => {
     loadProtocols();
@@ -133,13 +139,22 @@ export const ProtocolListPage: React.FC = () => {
         <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
           Gestión de Protocolos
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => navigate('/protocols/new')}
-        >
-          Nuevo Protocolo
-        </Button>
+        <Box display="flex" gap={2}>
+          <Button
+            variant="outlined"
+            startIcon={<UploadIcon />}
+            onClick={() => setGenerateDialogOpen(true)}
+          >
+            Generar desde Sistemática
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => navigate('/protocols/new')}
+          >
+            Nuevo Protocolo
+          </Button>
+        </Box>
       </Box>
 
       {error && (
@@ -242,6 +257,96 @@ export const ProtocolListPage: React.FC = () => {
           </Button>
           <Button onClick={handleDelete} color="error" variant="contained" disabled={deleting}>
             {deleting ? <CircularProgress size={24} /> : 'Eliminar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para generar protocolo desde sistemática */}
+      <Dialog open={generateDialogOpen} onClose={() => !generating && setGenerateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <DescriptionIcon />
+            <Typography variant="h6">Generar Protocolo desde Sistemática</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 3 }}>
+            Sube un documento de sistemática (PDF o DOCX) y el sistema generará automáticamente un protocolo
+            con todas las visitas y actividades necesarias usando inteligencia artificial.
+          </DialogContentText>
+          
+          <input
+            accept=".pdf,.doc,.docx"
+            style={{ display: 'none' }}
+            id="systematic-file-upload"
+            type="file"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+
+              try {
+                setGenerating(true);
+                setError('');
+                setGeneratingProgress(0);
+
+                const response = await protocolService.generateProtocolFromSystematic(
+                  file,
+                  setGeneratingProgress
+                );
+
+                if (response.success && response.data) {
+                  // Recargar protocolos
+                  await loadProtocols();
+                  setGenerateDialogOpen(false);
+                  setGeneratingProgress(0);
+                  // Mostrar mensaje de éxito
+                  setError(''); // Limpiar error si existe
+                  // Podríamos agregar un toast de éxito aquí
+                } else {
+                  setError(response.error || 'Error al generar el protocolo');
+                }
+              } catch (err: any) {
+                console.error('Error al generar protocolo:', err);
+                setError(
+                  err.response?.data?.error ||
+                    err.message ||
+                    'Error al generar el protocolo. Por favor intenta nuevamente.'
+                );
+              } finally {
+                setGenerating(false);
+                setGeneratingProgress(0);
+              }
+            }}
+            disabled={generating}
+          />
+          <label htmlFor="systematic-file-upload">
+            <Button
+              variant="outlined"
+              component="span"
+              startIcon={<UploadIcon />}
+              disabled={generating}
+              fullWidth
+              sx={{ mb: 2 }}
+            >
+              Seleccionar Archivo de Sistemática
+            </Button>
+          </label>
+
+          {generating && (
+            <Box sx={{ mt: 2 }}>
+              <LinearProgress variant="determinate" value={generatingProgress} />
+              <Typography variant="caption" sx={{ mt: 1, display: 'block', textAlign: 'center' }}>
+                Procesando archivo... {generatingProgress}%
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setGenerateDialogOpen(false)}
+            disabled={generating}
+          >
+            Cancelar
           </Button>
         </DialogActions>
       </Dialog>

@@ -175,6 +175,39 @@ class ProtocolService {
       templateId,
     });
   }
+
+  // ==========================================
+  // MÉTODOS PARA GENERAR PROTOCOLO DESDE SISTEMÁTICA
+  // ==========================================
+
+  // Generar protocolo desde archivo sistemática
+  async generateProtocolFromSystematic(
+    file: File,
+    onProgress?: (progress: number) => void
+  ): Promise<ApiResponse<Protocol>> {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+    const token = localStorage.getItem('authToken');
+
+    const formData = new FormData();
+    formData.append('systematic', file);
+
+    return axios.post<ApiResponse<Protocol>>(
+      `${API_BASE_URL}/protocols/generate-from-systematic`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+        onUploadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.total) {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            onProgress(progress);
+          }
+        },
+      }
+    ).then(response => response.data);
+  }
 }
 
 export const protocolService = new ProtocolService();
