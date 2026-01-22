@@ -153,6 +153,7 @@ export const TemplateActivityFormPage: React.FC = () => {
     decimalPlaces: 2,
     helpText: '',
     calculationFormula: '', // Fórmula para campos calculados
+    displayStructure: 'none' as 'none' | 'indented' | 'bullets' | 'numbered' | 'parentheses',
   });
   const [optionsText, setOptionsText] = useState('');
   const [options, setOptions] = useState<SelectOption[]>([]);
@@ -300,6 +301,7 @@ export const TemplateActivityFormPage: React.FC = () => {
           decimalPlaces: activity.decimalPlaces ?? 2,
           helpText: activity.helpText || '',
           calculationFormula: activity.calculationFormula || '',
+          displayStructure: activity.displayStructure || 'none',
         });
         
         // Cargar opciones si existen
@@ -430,6 +432,8 @@ export const TemplateActivityFormPage: React.FC = () => {
     
     // Siempre enviar helpText, incluso si está vacío, para que se actualice en la DB
     activityData.helpText = formData.helpText || '';
+    // Siempre enviar displayStructure
+    activityData.displayStructure = formData.displayStructure || 'none';
     if (formData.allowMultiple) {
       activityData.allowMultiple = formData.allowMultiple;
       activityData.repeatCount = formData.repeatCount;
@@ -1468,6 +1472,26 @@ export const TemplateActivityFormPage: React.FC = () => {
                 )}
               </Box>
             )}
+
+            <Divider sx={{ my: 3 }} />
+
+            <FormControl fullWidth>
+              <InputLabel>Estructura de Visualización</InputLabel>
+              <Select
+                value={formData.displayStructure || 'none'}
+                label="Estructura de Visualización"
+                onChange={(e) => setFormData({ ...formData, displayStructure: e.target.value as 'none' | 'indented' | 'bullets' | 'numbered' | 'parentheses' })}
+              >
+                <MenuItem value="none">Sin estructura (por defecto)</MenuItem>
+                <MenuItem value="indented">Con tabulación/indentación</MenuItem>
+                <MenuItem value="bullets">Con viñetas</MenuItem>
+                <MenuItem value="numbered">Numerado</MenuItem>
+                <MenuItem value="parentheses">Entre paréntesis</MenuItem>
+              </Select>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                Define cómo se mostrará esta información en la historia clínica generada. Solo configurar si es necesario.
+              </Typography>
+            </FormControl>
           </Box>
         </Box>
       </Paper>
