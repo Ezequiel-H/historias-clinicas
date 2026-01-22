@@ -22,7 +22,7 @@ export interface Visit {
 }
 
 // Tipos de campos disponibles
-export type FieldType = 
+export type FieldType =
   | 'text_short'           // Texto corto
   | 'text_long'            // Texto largo (textarea)
   | 'number_simple'        // Número simple
@@ -66,7 +66,7 @@ export interface Activity {
   fieldType: FieldType;
   required: boolean;
   order: number;
-  
+
   // Configuraciones específicas por tipo de campo
   measurementUnit?: string;
   expectedMin?: number;
@@ -87,21 +87,24 @@ export interface Activity {
   requireDatePerMeasurement?: boolean; // Si true, fecha por cada medición; si false, una fecha para todas (solo si allowMultiple)
   requireTimePerMeasurement?: boolean; // Si true, hora por cada medición; si false, una hora para todas (solo si allowMultiple)
   timeIntervalMinutes?: number;        // Intervalo fijo en minutos entre mediciones (solo si allowMultiple y requireTime). Si está configurado, solo se pregunta la hora de la primera medición
-  
+
   // Ayuda/instrucciones para el médico
   helpText?: string;
-  
+
   // Reglas de validación
   validationRules?: ActivityRule[];
-  
+
   // Campo calculado (solo si fieldType === 'calculated')
   calculationFormula?: string; // Ej: "peso / altura" - fórmula para calcular el valor automáticamente
-  
+
   // Configuración de seguimiento de medicación (solo si fieldType === 'medication_tracking')
   medicationTrackingConfig?: MedicationTrackingConfig;
-  
+
   // Si true, este campo representa la fecha de la visita (solo si fieldType === 'datetime' y datetimeIncludeDate === true)
   isVisitDate?: boolean;
+
+  // Estructura de visualización en la historia clínica generada
+  displayStructure?: 'none' | 'indented' | 'bullets' | 'numbered' | 'parentheses';
 }
 
 // Configuración de seguimiento de medicación

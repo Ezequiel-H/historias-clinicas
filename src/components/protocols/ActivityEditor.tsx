@@ -47,6 +47,7 @@ interface ActivityFormData {
   helpText?: string;
   allowMultiple?: boolean;
   options?: SelectOption[];
+  displayStructure?: 'none' | 'indented' | 'bullets' | 'numbered' | 'parentheses';
 }
 
 const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = [
@@ -95,6 +96,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
         helpText: activity.helpText,
         allowMultiple: activity.allowMultiple,
         options: activity.options,
+        displayStructure: activity.displayStructure || 'none',
       });
       if (activity.options) {
         setOptionsText(activity.options.map(o => `${o.value}|${o.label}`).join('\n'));
@@ -496,6 +498,26 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
               rows={2}
               placeholder="Instrucciones para el médico sobre cómo completar este campo"
             />
+
+            <Divider />
+
+            <FormControl fullWidth>
+              <InputLabel>Estructura de Visualización</InputLabel>
+              <Select
+                value={formData.displayStructure || 'none'}
+                label="Estructura de Visualización"
+                onChange={(e) => setFormData({ ...formData, displayStructure: e.target.value as 'none' | 'indented' | 'bullets' | 'numbered' | 'parentheses' })}
+              >
+                <MenuItem value="none">Sin estructura (por defecto)</MenuItem>
+                <MenuItem value="indented">Con tabulación/indentación</MenuItem>
+                <MenuItem value="bullets">Con viñetas</MenuItem>
+                <MenuItem value="numbered">Numerado</MenuItem>
+                <MenuItem value="parentheses">Entre paréntesis</MenuItem>
+              </Select>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                Define cómo se mostrará esta información en la historia clínica generada. Solo configurar si es necesario.
+              </Typography>
+            </FormControl>
           </Box>
         </DialogContent>
         <DialogActions>
