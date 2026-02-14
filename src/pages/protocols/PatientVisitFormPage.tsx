@@ -58,6 +58,9 @@ const waitForFileSystem = async (
   return false;
 };
 
+const PATIENT_NAME_ACTIVITY_ID =
+  import.meta.env.VITE_PATIENT_NAME_ACTIVITY_ID;
+
 export const PatientVisitFormPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -86,7 +89,7 @@ export const PatientVisitFormPage: React.FC = () => {
     let nombreApellido = "";
     if (data?.activities) {
       const nombreApellidoActivity = data.activities.find(
-        (activity: any) => activity.name === "Nombre y Apellido"
+        (activity: any) => activity.id === PATIENT_NAME_ACTIVITY_ID
       );
       if (nombreApellidoActivity) {
         nombreApellido = nombreApellidoActivity.value || "";
