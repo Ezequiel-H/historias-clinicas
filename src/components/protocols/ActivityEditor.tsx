@@ -47,6 +47,7 @@ interface ActivityFormData {
   helpText?: string;
   allowMultiple?: boolean;
   options?: SelectOption[];
+  excludeFromAI?: boolean;
 }
 
 const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = [
@@ -95,6 +96,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
         helpText: activity.helpText,
         allowMultiple: activity.allowMultiple,
         options: activity.options,
+        excludeFromAI: activity.excludeFromAI || false,
       });
       if (activity.options) {
         setOptionsText(activity.options.map(o => `${o.value}|${o.label}`).join('\n'));
@@ -119,6 +121,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
         description: '',
         fieldType: 'text_short',
         required: false,
+        excludeFromAI: false,
       });
       setOptionsText('');
       setMedicationConfig({
@@ -180,6 +183,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
       visitId: visit.id,
       order: editingActivity?.order || activities.length + 1,
       ...formData,
+      excludeFromAI: formData.excludeFromAI || false,
     };
 
     // Parsear opciones si es campo de selección
@@ -290,6 +294,14 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
                           <Typography variant="body1" fontWeight="medium">
                             {activity.order}. {activity.name}
                           </Typography>
+                          {activity.excludeFromAI && (
+                            <Chip 
+                              label="Excluido de IA" 
+                              color="warning" 
+                              size="small"
+                              sx={{ fontWeight: 'bold' }}
+                            />
+                          )}
                           {activity.required && (
                             <Chip label="Requerido" color="error" size="small" />
                           )}
@@ -376,7 +388,49 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
               </Select>
             </FormControl>
 
-            <Box display="flex" gap={2}>
+            <Divider />
+
+            {/* Exclusión de IA - Separado */}
+            <Box sx={{ 
+              p: 2, 
+              bgcolor: formData.excludeFromAI ? 'warning.light' : 'grey.50',
+              borderRadius: 1,
+              border: formData.excludeFromAI ? '2px solid' : '1px solid',
+              borderColor: formData.excludeFromAI ? 'warning.main' : 'divider',
+            }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.excludeFromAI || false}
+                    onChange={(e) => setFormData({ ...formData, excludeFromAI: e.target.checked })}
+                    sx={{
+                      '&.Mui-checked': {
+                        color: 'warning.main',
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Typography 
+                    variant="body1" 
+                    fontWeight={formData.excludeFromAI ? 'bold' : 'normal'}
+                    color={formData.excludeFromAI ? 'warning.dark' : 'text.primary'}
+                  >
+                    Excluir de IA (no enviar resultado a la IA)
+                  </Typography>
+                }
+                title="Si está marcado, el resultado de esta actividad no se enviará a la IA al generar la historia clínica"
+              />
+              {formData.excludeFromAI && (
+                <Alert severity="warning" sx={{ mt: 1 }}>
+                  Esta actividad será excluida del procesamiento de IA al generar la historia clínica.
+                </Alert>
+              )}
+            </Box>
+
+            <Divider />
+
+            <Box display="flex" gap={2} flexWrap="wrap">
               <FormControlLabel
                 control={
                   <Checkbox

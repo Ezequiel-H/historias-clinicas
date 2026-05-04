@@ -963,6 +963,11 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             description: editedDescription || activity.description,
           };
 
+          // Solo incluir excludeFromAI si es true
+          if (activity.excludeFromAI === true) {
+            activityObj.excludeFromAI = true;
+          }
+
           if (activity.measurementUnit) {
             activityObj.measurementUnit = activity.measurementUnit;
           }
