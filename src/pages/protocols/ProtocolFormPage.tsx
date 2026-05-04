@@ -281,7 +281,6 @@ export const ProtocolFormPage: React.FC = () => {
               <Controller
                 name="description"
                 control={control}
-                rules={{ required: 'La descripción es requerida' }}
                 render={({ field }) => (
                   <TextField
                     {...field}

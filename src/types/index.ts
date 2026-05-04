@@ -227,6 +227,8 @@ export interface ApiResponse<T> {
   data: T;
   message?: string;
   success: boolean;
+  /** Presente cuando success es false en varios endpoints */
+  error?: string;
 }
 
 export interface PaginatedResponse<T> {

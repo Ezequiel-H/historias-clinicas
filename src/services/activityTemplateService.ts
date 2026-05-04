@@ -36,5 +36,3 @@ class ActivityTemplateService {
 
 export const activityTemplateService = new ActivityTemplateService();
 export default activityTemplateService;
-
-
