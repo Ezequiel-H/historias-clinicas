@@ -272,7 +272,7 @@ export const ProtocolListPage: React.FC = () => {
         <DialogContent>
           <DialogContentText sx={{ mb: 3 }}>
             Sube un documento de sistemática (PDF o DOCX) y el sistema generará automáticamente un protocolo
-            con todas las visitas y actividades necesarias usando inteligencia artificial.
+            con todas las visitas y actividades necesarias a partir del documento (asistencia de redacción estructurada).
           </DialogContentText>
           
           <input

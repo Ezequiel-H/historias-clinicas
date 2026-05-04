@@ -30,6 +30,7 @@ import {
   DragIndicator as DragIcon,
 } from '@mui/icons-material';
 import type { Activity, FieldType, SelectOption, Visit, MedicationTrackingConfig } from '../../types';
+import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 import { preventNumberInputScroll } from './shared';
 
 interface ActivityEditorProps {
@@ -47,7 +48,7 @@ interface ActivityFormData {
   helpText?: string;
   allowMultiple?: boolean;
   options?: SelectOption[];
-  excludeFromAI?: boolean;
+  excludeFromRedactor?: boolean;
 }
 
 const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = [
@@ -96,7 +97,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
         helpText: activity.helpText,
         allowMultiple: activity.allowMultiple,
         options: activity.options,
-        excludeFromAI: activity.excludeFromAI || false,
+        excludeFromRedactor: isExcludedFromClinicalRedactor(activity),
       });
       if (activity.options) {
         setOptionsText(activity.options.map(o => `${o.value}|${o.label}`).join('\n'));
@@ -121,7 +122,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
         description: '',
         fieldType: 'text_short',
         required: false,
-        excludeFromAI: false,
+        excludeFromRedactor: false,
       });
       setOptionsText('');
       setMedicationConfig({
@@ -183,7 +184,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
       visitId: visit.id,
       order: editingActivity?.order || activities.length + 1,
       ...formData,
-      excludeFromAI: formData.excludeFromAI || false,
+      excludeFromRedactor: formData.excludeFromRedactor || false,
     };
 
     // Parsear opciones si es campo de selección
@@ -294,9 +295,9 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
                           <Typography variant="body1" fontWeight="medium">
                             {activity.order}. {activity.name}
                           </Typography>
-                          {activity.excludeFromAI && (
+                          {isExcludedFromClinicalRedactor(activity) && (
                             <Chip 
-                              label="Excluido de IA" 
+                              label="Excluido del redactor" 
                               color="warning" 
                               size="small"
                               sx={{ fontWeight: 'bold' }}
@@ -390,19 +391,19 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
 
             <Divider />
 
-            {/* Exclusión de IA - Separado */}
+            {/* Exclusión del redactor clínico */}
             <Box sx={{ 
               p: 2, 
-              bgcolor: formData.excludeFromAI ? 'warning.light' : 'grey.50',
+              bgcolor: formData.excludeFromRedactor ? 'warning.light' : 'grey.50',
               borderRadius: 1,
-              border: formData.excludeFromAI ? '2px solid' : '1px solid',
-              borderColor: formData.excludeFromAI ? 'warning.main' : 'divider',
+              border: formData.excludeFromRedactor ? '2px solid' : '1px solid',
+              borderColor: formData.excludeFromRedactor ? 'warning.main' : 'divider',
             }}>
               <FormControlLabel
                 control={
                   <Checkbox
-                    checked={formData.excludeFromAI || false}
-                    onChange={(e) => setFormData({ ...formData, excludeFromAI: e.target.checked })}
+                    checked={formData.excludeFromRedactor || false}
+                    onChange={(e) => setFormData({ ...formData, excludeFromRedactor: e.target.checked })}
                     sx={{
                       '&.Mui-checked': {
                         color: 'warning.main',
@@ -413,17 +414,17 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
                 label={
                   <Typography 
                     variant="body1" 
-                    fontWeight={formData.excludeFromAI ? 'bold' : 'normal'}
-                    color={formData.excludeFromAI ? 'warning.dark' : 'text.primary'}
+                    fontWeight={formData.excludeFromRedactor ? 'bold' : 'normal'}
+                    color={formData.excludeFromRedactor ? 'warning.dark' : 'text.primary'}
                   >
-                    Excluir de IA (no enviar resultado a la IA)
+                    Excluir del redactor (no enviar este resultado a la historia clínica)
                   </Typography>
                 }
-                title="Si está marcado, el resultado de esta actividad no se enviará a la IA al generar la historia clínica"
+                title="Si está marcado, el resultado de esta actividad no se usará al armar el texto de historia clínica"
               />
-              {formData.excludeFromAI && (
+              {formData.excludeFromRedactor && (
                 <Alert severity="warning" sx={{ mt: 1 }}>
-                  Esta actividad será excluida del procesamiento de IA al generar la historia clínica.
+                  Esta actividad no se tendrá en cuenta al generar la historia clínica.
                 </Alert>
               )}
             </Box>

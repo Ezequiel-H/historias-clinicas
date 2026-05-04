@@ -103,8 +103,8 @@ export interface Activity {
   // Si true, este campo representa la fecha de la visita (solo si fieldType === 'datetime' y datetimeIncludeDate === true)
   isVisitDate?: boolean;
   
-  // Si true, el resultado de esta actividad no se enviará a la IA
-  excludeFromAI?: boolean;
+  /** Si true, el resultado de esta actividad no se envía al redactor de historia clínica */
+  excludeFromRedactor?: boolean;
 }
 
 // Configuración de seguimiento de medicación

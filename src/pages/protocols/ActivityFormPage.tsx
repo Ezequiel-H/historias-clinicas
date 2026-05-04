@@ -50,6 +50,7 @@ import {
 import type { FieldType, SelectOption, ActivityRule, MedicationTrackingConfig } from '../../types';
 import protocolService from '../../services/protocolService';
 import { preventNumberInputScroll } from '../../components/protocols/shared';
+import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 
 const FIELD_TYPES = [
   {
@@ -155,7 +156,7 @@ export const ActivityFormPage: React.FC = () => {
     decimalPlaces: 2,
     helpText: '',
     calculationFormula: '', // Fórmula para campos calculados
-    excludeFromAI: false, // Si true, el resultado de esta actividad no se enviará a la IA
+    excludeFromRedactor: false, // Si true, el resultado no se envía al redactor de historia clínica
   });
   const [optionsText, setOptionsText] = useState('');
   const [options, setOptions] = useState<SelectOption[]>([]);
@@ -322,7 +323,7 @@ export const ActivityFormPage: React.FC = () => {
           decimalPlaces: activity.decimalPlaces ?? 2,
           helpText: activity.helpText || '',
           calculationFormula: activity.calculationFormula || '',
-          excludeFromAI: activity.excludeFromAI || false,
+          excludeFromRedactor: isExcludedFromClinicalRedactor(activity),
         });
         if (activity.medicationTrackingConfig) {
           setMedicationConfig(activity.medicationTrackingConfig);
@@ -484,8 +485,7 @@ export const ActivityFormPage: React.FC = () => {
     
     // Siempre enviar helpText, incluso si está vacío, para que se actualice en la DB
     activityData.helpText = formData.helpText || '';
-    // Siempre enviar excludeFromAI
-    activityData.excludeFromAI = formData.excludeFromAI || false;
+    activityData.excludeFromRedactor = formData.excludeFromRedactor || false;
     if (formData.allowMultiple) {
       activityData.allowMultiple = formData.allowMultiple;
       activityData.repeatCount = formData.repeatCount;
@@ -768,14 +768,14 @@ export const ActivityFormPage: React.FC = () => {
           />
 
           <TextField
-            label="Instrucciones para el sistema (Opcional)"
+            label="Instrucciones para el redactor (Opcional)"
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             fullWidth
             multiline
             rows={3}
-            placeholder="Instrucciones para el sistema que procesará las respuestas y escribirá la historia clínica. Ej: 'Si el valor es mayor a 150, mencionar riesgo cardiovascular'"
-            helperText="Este texto será usado por el sistema para interpretar y documentar las respuestas en la historia clínica"
+            placeholder="Orientaciones para quien redacte la historia clínica a partir de las respuestas. Ej: 'Si el valor es mayor a 150, mencionar riesgo cardiovascular'"
+            helperText="Este texto guía cómo integrar y documentar las respuestas en la historia clínica"
           />
 
           <Divider />
@@ -1325,20 +1325,20 @@ export const ActivityFormPage: React.FC = () => {
 
           <Divider />
 
-          {/* Exclusión de IA - Separado */}
+          {/* Exclusión del redactor clínico */}
           <Box sx={{ 
             p: 2, 
             mb: 2,
-            bgcolor: formData.excludeFromAI ? 'warning.light' : 'grey.50',
+            bgcolor: formData.excludeFromRedactor ? 'warning.light' : 'grey.50',
             borderRadius: 1,
-            border: formData.excludeFromAI ? '2px solid' : '1px solid',
-            borderColor: formData.excludeFromAI ? 'warning.main' : 'divider',
+            border: formData.excludeFromRedactor ? '2px solid' : '1px solid',
+            borderColor: formData.excludeFromRedactor ? 'warning.main' : 'divider',
           }}>
             <FormControlLabel
               control={
                 <Checkbox
-                  checked={formData.excludeFromAI}
-                  onChange={(e) => setFormData({ ...formData, excludeFromAI: e.target.checked })}
+                  checked={formData.excludeFromRedactor}
+                  onChange={(e) => setFormData({ ...formData, excludeFromRedactor: e.target.checked })}
                   sx={{
                     '&.Mui-checked': {
                       color: 'warning.main',
@@ -1349,17 +1349,17 @@ export const ActivityFormPage: React.FC = () => {
               label={
                 <Typography 
                   variant="body1" 
-                  fontWeight={formData.excludeFromAI ? 'bold' : 'normal'}
-                  color={formData.excludeFromAI ? 'warning.dark' : 'text.primary'}
+                  fontWeight={formData.excludeFromRedactor ? 'bold' : 'normal'}
+                  color={formData.excludeFromRedactor ? 'warning.dark' : 'text.primary'}
                 >
-                  Excluir de IA (no enviar resultado a la IA)
+                  Excluir del redactor (no enviar este resultado a la historia clínica)
                 </Typography>
               }
-              title="Si está marcado, el resultado de esta actividad no se enviará a la IA al generar la historia clínica"
+              title="Si está marcado, el resultado de esta actividad no se usará al armar el texto de historia clínica"
             />
-            {formData.excludeFromAI && (
+            {formData.excludeFromRedactor && (
               <Alert severity="warning" sx={{ mt: 1 }}>
-                Esta actividad será excluida del procesamiento de IA al generar la historia clínica.
+                Esta actividad no se tendrá en cuenta al generar la historia clínica.
               </Alert>
             )}
           </Box>
@@ -1699,11 +1699,6 @@ export const ActivityFormPage: React.FC = () => {
                 Este campo se mostrará solo cuando <strong>{availableActivitiesForConditional.find(a => a.id === conditionalConfig.dependsOn)?.name}</strong> tenga el valor: <strong>{typeof conditionalConfig.showWhen === 'boolean' ? (conditionalConfig.showWhen ? 'Sí/Verdadero' : 'No/Falso') : conditionalConfig.showWhen}</strong>
               </Typography>
             </Alert>
-          )}
-          {formData.description && (
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              {formData.description}
-            </Typography>
           )}
           <Box sx={{ mt: 1 }}>
             {/* Vista previa según el tipo de campo */}

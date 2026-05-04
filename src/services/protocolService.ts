@@ -83,7 +83,7 @@ class ProtocolService {
     });
   }
 
-  // Previsualizar texto de historia clínica con IA (sin generar PDF)
+  // Previsualizar texto de historia clínica con el redactor (sin generar PDF)
   async previewClinicalHistory(protocolId: string, visitId: string, visitData: any): Promise<string> {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
     const token = localStorage.getItem('authToken');
@@ -102,7 +102,7 @@ class ProtocolService {
     return response.data.data.clinicalHistoryText;
   }
 
-  // Generar historia clínica con IA
+  // Generar historia clínica con el redactor
   async generateClinicalHistory(
     protocolId: string,
     visitId: string,

@@ -30,6 +30,7 @@ import {
   calculateMedicationAdherence,
   detectAdherenceProblems,
 } from './shared';
+import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 
 interface PatientVisitFormProps {
   visit: Visit;
@@ -963,9 +964,8 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             description: editedDescription || activity.description,
           };
 
-          // Solo incluir excludeFromAI si es true
-          if (activity.excludeFromAI === true) {
-            activityObj.excludeFromAI = true;
+          if (isExcludedFromClinicalRedactor(activity)) {
+            activityObj.excludeFromRedactor = true;
           }
 
           if (activity.measurementUnit) {

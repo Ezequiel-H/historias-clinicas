@@ -42,6 +42,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Template, Activity } from '../../types';
+import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 import templateService from '../../services/templateService';
 import { VisitFormPreview } from '../../components/protocols/VisitFormPreview';
 
@@ -98,9 +99,9 @@ const SortableItem: React.FC<SortableItemProps> = ({
                 <Typography variant="h6" component="div">
                   {index + 1}. {activity.name}
                 </Typography>
-                {activity.excludeFromAI && (
+                {isExcludedFromClinicalRedactor(activity) && (
                   <Chip 
-                    label="Excluido de IA" 
+                    label="Excluido del redactor" 
                     color="warning" 
                     size="small"
                     sx={{ fontWeight: 'bold' }}

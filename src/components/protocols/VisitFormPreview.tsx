@@ -28,6 +28,7 @@ import {
   calculateMedicationAdherence,
   detectAdherenceProblems,
 } from './shared';
+import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 
 interface VisitFormPreviewProps {
   open: boolean;
@@ -974,9 +975,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
             description: activity.description,
           };
 
-          // Solo incluir excludeFromAI si es true
-          if (activity.excludeFromAI === true) {
-            activityObj.excludeFromAI = true;
+          if (isExcludedFromClinicalRedactor(activity)) {
+            activityObj.excludeFromRedactor = true;
           }
 
           // Incluir campos si existen en la actividad

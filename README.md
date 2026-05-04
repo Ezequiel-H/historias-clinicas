@@ -11,13 +11,13 @@ Sistema de soporte para la escritura de historias clínicas en estudios de inves
 - ✅ Gestión completa de protocolos (CRUD)
 - ✅ Búsqueda y filtrado de protocolos
 - ✅ Interfaz moderna y responsiva con Material-UI
-- ✅ Preparado para extracción automatizada de datos con IA (mock implementado)
+- ✅ Preparado para extracción automatizada de datos (mock implementado)
 - ✅ Sistema de servicios API preparado para integración backend
 
 ### Próximas Fases
 
 - **Fase 2**: Interfaz de carga de visitas (presenciales, telefónicas, no programadas)
-- **Fase 3**: Generación de texto con inteligencia artificial
+- **Fase 3**: Generación de texto asistida (redactor clínico)
 - **Fase 4**: Descarga de documentos PDF con firma electrónica
 
 ## 🛠️ Tecnologías Utilizadas
@@ -147,7 +147,7 @@ El sistema espera los siguientes endpoints:
 - `POST /api/protocols` - Crear protocolo
 - `PUT /api/protocols/:id` - Actualizar protocolo
 - `DELETE /api/protocols/:id` - Eliminar protocolo
-- `POST /api/protocols/extract` - Extraer datos de documento (IA)
+- `POST /api/protocols/extract` - Extraer datos de documento (procesamiento asistido)
 
 ## 🎨 Personalización
 

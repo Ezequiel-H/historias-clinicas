@@ -1,6 +1,6 @@
 Objetivo General
 Diseñar e implementar un sistema de soporte para la escritura de historias clínicas en estudios de investigación clínica, minimizando errores derivados de distracciones o desconocimiento de los lineamientos de los protocolos.
-El sistema permitirá centralizar la información de los protocolos, asistir a los médicos durante la carga de visitas, generar contenido de relleno único para cada historia clínica con inteligencia artificial, y facilitar la descarga de documentos listos para impresión. No se almacenará información sensible de pacientes, asegurando confidencialidad y privacidad en cada uso.
+El sistema permitirá centralizar la información de los protocolos, asistir a los médicos durante la carga de visitas, generar contenido de relleno único para cada historia clínica mediante asistencia de redacción clínica, y facilitar la descarga de documentos listos para impresión. No se almacenará información sensible de pacientes, asegurando confidencialidad y privacidad en cada uso.
 
 FASE 1 – DASHBOARD DE ADMINISTRACIÓN DE PROTOCOLOS
 Desarrollo de un panel administrativo para la carga, edición y consulta de protocolos de estudios clínicos. Esta herramienta permitirá estructurar y digitalizar la información contenida en los documentos actuales del centro, facilitando su reutilización y estandarización.
@@ -17,7 +17,7 @@ Carga guiada de visitas: presenciales, telefónicas o no programadas.
 Señalización automatizada aleatoria o manual de participación de la investigadora principal.
 Revisión paso a paso para asegurar cumplimiento del protocolo cargado.
 
-FASE 3 – GENERACIÓN DE TEXTO CON INTELIGENCIA ARTIFICIAL
+FASE 3 – GENERACIÓN DE TEXTO ASISTIDA (REDACTOR CLÍNICO)
 Generación de texto complementario automático para cada historia clínica, asegurando que cada documento sea único.
 Generación sin almacenamiento: el texto se genera, visualiza y descarga, sin que se guarden datos de pacientes.
 
