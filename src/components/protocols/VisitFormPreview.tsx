@@ -17,8 +17,10 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   CheckCircle as CheckCircleIcon,
+  AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material';
 import type { Activity, ActivityRule } from '../../types';
+import protocolService from '../../services/protocolService';
 import {
   parseLocalDate,
   normalizeTime,
@@ -35,6 +37,8 @@ interface VisitFormPreviewProps {
   onClose: () => void;
   visitName: string;
   activities: Activity[];
+  protocolId?: string;
+  visitId?: string;
 }
 
 interface ValidationError {
@@ -57,6 +61,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   onClose,
   visitName,
   activities,
+  protocolId,
+  visitId,
 }) => {
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
@@ -64,6 +70,10 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [showValuesDialog, setShowValuesDialog] = useState(false);
   const [validatedFormData, setValidatedFormData] = useState<any>(null);
+  const [isGeneratingClinicalHistory, setIsGeneratingClinicalHistory] = useState(false);
+  const [showClinicalHistoryDialog, setShowClinicalHistoryDialog] = useState(false);
+  const [clinicalHistoryText, setClinicalHistoryText] = useState('');
+  const [clinicalHistoryError, setClinicalHistoryError] = useState('');
   
   // Estado para manejar errores de adherencia y decisiones del médico
   const [medicationErrors, setMedicationErrors] = useState<Record<string, Record<string, {
@@ -139,6 +149,10 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       setShowValuesDialog(false);
       setValidatedFormData(null);
       setMedicationErrors({});
+      setIsGeneratingClinicalHistory(false);
+      setShowClinicalHistoryDialog(false);
+      setClinicalHistoryText('');
+      setClinicalHistoryError('');
     }
   }, [open]);
 
@@ -1178,6 +1192,29 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
     }
   };
 
+  const handleGenerateClinicalHistory = async () => {
+    if (!validatedFormData || !protocolId || !visitId) return;
+
+    try {
+      setIsGeneratingClinicalHistory(true);
+      setClinicalHistoryError('');
+      const generatedText = await protocolService.previewClinicalHistory(
+        protocolId,
+        visitId,
+        validatedFormData
+      );
+      setClinicalHistoryText(generatedText);
+      setShowClinicalHistoryDialog(true);
+    } catch (error: any) {
+      setClinicalHistoryError(
+        error?.response?.data?.error ||
+          'No se pudo generar la historia clínica con IA. Intente nuevamente.'
+      );
+    } finally {
+      setIsGeneratingClinicalHistory(false);
+    }
+  };
+
   // Función helper para obtener la fecha de la visita desde el campo isVisitDate
   const getVisitDate = (): Date => {
     const visitDateActivity = activities.find(act =>
@@ -1286,9 +1323,6 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           )}
         </Box>
         <Box display="flex" gap={1}>
-          <Button onClick={onClose} variant="outlined" startIcon={<CloseIcon />}>
-            Cerrar
-          </Button>
           {activities.length > 0 && (
             <>
               <Button
@@ -1299,6 +1333,16 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
               >
                 Ver Objeto
               </Button>
+              {protocolId && visitId && (
+                <Button
+                  onClick={handleGenerateClinicalHistory}
+                  variant="outlined"
+                  startIcon={<AutoAwesomeIcon />}
+                  disabled={!validatedFormData || isGeneratingClinicalHistory}
+                >
+                  {isGeneratingClinicalHistory ? 'Generando...' : 'Generar HC'}
+                </Button>
+              )}
               <Button
                 onClick={handleSubmit}
                 variant="contained"
@@ -1383,6 +1427,49 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowValuesDialog(false)}>
+            Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para mostrar texto generado por IA */}
+      <Dialog
+        open={showClinicalHistoryDialog}
+        onClose={() => setShowClinicalHistoryDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <AutoAwesomeIcon color="primary" />
+            <Typography variant="h6">Historia Clínica Generada por IA</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {clinicalHistoryError ? (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {clinicalHistoryError}
+            </Alert>
+          ) : (
+            <Box
+              sx={{
+                mt: 1,
+                p: 2,
+                bgcolor: 'grey.50',
+                borderRadius: 1,
+                border: '1px solid',
+                borderColor: 'grey.300',
+                maxHeight: '60vh',
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {clinicalHistoryText || 'No se pudo generar contenido.'}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowClinicalHistoryDialog(false)}>
             Cerrar
           </Button>
         </DialogActions>

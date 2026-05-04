@@ -25,6 +25,7 @@ export interface Visit {
 export type FieldType = 
   | 'text_short'           // Texto corto
   | 'text_long'            // Texto largo (textarea)
+  | 'constant'             // Texto fijo que se incluye en la historia clínica
   | 'number_simple'        // Número simple
   | 'number_compound'      // Número compuesto (ej: sistólica/diastólica)
   | 'select_single'        // Selección (radio/checkbox según selectMultiple)
@@ -90,6 +91,8 @@ export interface Activity {
   
   // Ayuda/instrucciones para el médico
   helpText?: string;
+  // Texto fijo para campos de tipo constante (se envía directo al redactor)
+  constantText?: string;
   
   // Reglas de validación
   validationRules?: ActivityRule[];

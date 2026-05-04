@@ -130,6 +130,14 @@ export const ActivityFieldRenderer: React.FC<ActivityFieldRendererProps> = ({
           index
         );
 
+      case 'constant':
+        return wrapField(
+          <Alert severity="info">
+            {activity.constantText?.trim() || 'Este texto fijo se incluirá automáticamente en la historia clínica.'}
+          </Alert>,
+          index
+        );
+
       case 'number_simple': {
         const hasRangeError = showValidation && activityErrors.some(e => 
           e.rule.condition === 'range'

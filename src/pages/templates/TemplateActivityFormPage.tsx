@@ -46,6 +46,7 @@ import {
   Code as CodeIcon,
   Link as LinkIcon,
   Medication as MedicationIcon,
+  Notes as NotesIcon,
 } from '@mui/icons-material';
 import type { FieldType, SelectOption, ActivityRule } from '../../types';
 import templateService from '../../services/templateService';
@@ -66,6 +67,13 @@ const FIELD_TYPES = [
     description: 'Área de texto multilínea (observaciones)',
     icon: <TextIcon />,
     color: '#1565c0',
+  },
+  {
+    value: 'constant' as FieldType,
+    label: 'Constante',
+    description: 'Texto fijo que se envía a la historia clínica sin pedir respuesta al médico',
+    icon: <NotesIcon />,
+    color: '#5d4037',
   },
   {
     value: 'number_simple' as FieldType,
@@ -153,6 +161,7 @@ export const TemplateActivityFormPage: React.FC = () => {
     measurementUnit: '',
     decimalPlaces: 2,
     helpText: '',
+    constantText: '',
     calculationFormula: '', // Fórmula para campos calculados
     excludeFromRedactor: false, // Si true, el resultado no se envía al redactor de historia clínica
   });
@@ -301,6 +310,7 @@ export const TemplateActivityFormPage: React.FC = () => {
           measurementUnit: activity.measurementUnit || '',
           decimalPlaces: activity.decimalPlaces ?? 2,
           helpText: activity.helpText || '',
+          constantText: (activity as any).constantText || '',
           calculationFormula: activity.calculationFormula || '',
           excludeFromRedactor: isExcludedFromClinicalRedactor(activity),
         });
@@ -368,7 +378,15 @@ export const TemplateActivityFormPage: React.FC = () => {
   };
 
   const handleSelectType = (type: FieldType) => {
-    setFormData({ ...formData, fieldType: type });
+    const isConstant = type === 'constant';
+    setFormData({
+      ...formData,
+      fieldType: type,
+      required: isConstant ? false : formData.required,
+      allowMultiple: isConstant ? false : formData.allowMultiple,
+      requireDate: isConstant ? false : formData.requireDate,
+      requireTime: isConstant ? false : formData.requireTime,
+    });
     setStep('config');
   };
 
@@ -390,7 +408,7 @@ export const TemplateActivityFormPage: React.FC = () => {
       name: formData.name.trim(),
       description: formData.description?.trim() || '',
       fieldType: formData.fieldType,
-      required: formData.required,
+      required: formData.fieldType === 'constant' ? false : formData.required,
       order: 1, // El backend asignará el orden correcto
     };
 
@@ -433,6 +451,7 @@ export const TemplateActivityFormPage: React.FC = () => {
     
     // Siempre enviar helpText, incluso si está vacío, para que se actualice en la DB
     activityData.helpText = formData.helpText || '';
+    activityData.constantText = formData.fieldType === 'constant' ? (formData.constantText || '').trim() : '';
     activityData.excludeFromRedactor = formData.excludeFromRedactor || false;
     if (formData.allowMultiple) {
       activityData.allowMultiple = formData.allowMultiple;
@@ -523,6 +542,10 @@ export const TemplateActivityFormPage: React.FC = () => {
       setError('El nombre y el tipo de campo son obligatorios');
       return;
     }
+    if (formData.fieldType === 'constant' && !formData.constantText.trim()) {
+      setError('Para el tipo constante, el texto fijo es obligatorio');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -572,6 +595,7 @@ export const TemplateActivityFormPage: React.FC = () => {
 
   const needsUnit = formData.fieldType === 'number_simple' || formData.fieldType === 'number_compound' || formData.fieldType === 'calculated';
   const needsOptions = formData.fieldType === 'select_single';
+  const isConstantField = formData.fieldType === 'constant';
 
   if (loadingData) {
     return (
@@ -706,6 +730,20 @@ export const TemplateActivityFormPage: React.FC = () => {
             placeholder="Orientaciones para quien redacte la historia clínica a partir de las respuestas. Ej: 'Si el valor es mayor a 150, mencionar riesgo cardiovascular'"
             helperText="Este texto guía cómo integrar y documentar las respuestas en la historia clínica"
           />
+
+          {isConstantField && (
+            <TextField
+              label="Texto fijo para incluir en la historia clínica"
+              value={formData.constantText}
+              onChange={(e) => setFormData({ ...formData, constantText: e.target.value })}
+              fullWidth
+              required
+              multiline
+              rows={4}
+              placeholder="Ej: Se verificó consentimiento informado vigente y firmado."
+              helperText="Este texto se envía directamente al redactor; el médico no completa ningún dato para este campo."
+            />
+          )}
 
           <Divider />
 
@@ -1233,6 +1271,7 @@ export const TemplateActivityFormPage: React.FC = () => {
                   <Checkbox
                     checked={formData.required}
                     onChange={(e) => setFormData({ ...formData, required: e.target.checked })}
+                    disabled={isConstantField}
                   />
                 }
                 label="Campo Requerido (obligatorio completar)"
@@ -1243,7 +1282,7 @@ export const TemplateActivityFormPage: React.FC = () => {
                     <Checkbox
                       checked={formData.allowMultiple}
                       onChange={(e) => setFormData({ ...formData, allowMultiple: e.target.checked })}
-                      disabled={formData.fieldType === 'calculated'} // Los campos calculados no pueden tener múltiples mediciones
+                      disabled={formData.fieldType === 'calculated' || isConstantField} // Los campos calculados/constantes no pueden tener múltiples mediciones
                     />
                   }
                   label="Permitir Múltiples Mediciones (ej: tomar PA 3 veces)"
@@ -1284,6 +1323,7 @@ export const TemplateActivityFormPage: React.FC = () => {
                   <Checkbox
                     checked={formData.requireDate}
                     onChange={(e) => setFormData({ ...formData, requireDate: e.target.checked })}
+                    disabled={isConstantField}
                   />
                 }
                 label="Solicitar fecha en que se realizó la actividad"
@@ -1293,6 +1333,7 @@ export const TemplateActivityFormPage: React.FC = () => {
                   <Checkbox
                     checked={formData.requireTime}
                     onChange={(e) => setFormData({ ...formData, requireTime: e.target.checked })}
+                    disabled={isConstantField}
                   />
                 }
                 label="Solicitar hora en que se realizó la actividad"

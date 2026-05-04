@@ -315,7 +315,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
   const buildValidationRules = (activity: Activity): ValidationFunction[] => {
     const rules: ValidationFunction[] = [];
 
-    if (activity.required) {
+    if (activity.fieldType !== 'constant' && activity.required) {
       rules.push(validateRequired);
     }
     if (activity.requireDate) {
@@ -946,6 +946,9 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
         visitType: visit.type,
         activities: activities.map(activity => {
           let rawValue = formValues[activity.id];
+          if (activity.fieldType === 'constant') {
+            rawValue = activity.constantText || '';
+          }
           if (activity.fieldType === 'calculated' && activity.calculationFormula) {
             const calculated = evaluateFormula(activity.calculationFormula, formValues);
             if (calculated !== null && !isNaN(calculated)) {
@@ -963,6 +966,10 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             helpText: activity.helpText,
             description: editedDescription || activity.description,
           };
+
+          if (activity.fieldType === 'constant') {
+            activityObj.constantText = activity.constantText || '';
+          }
 
           if (isExcludedFromClinicalRedactor(activity)) {
             activityObj.excludeFromRedactor = true;

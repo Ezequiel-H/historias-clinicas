@@ -42,6 +42,7 @@ interface ActivityEditorProps {
 interface ActivityFormData {
   name: string;
   description: string;
+  constantText?: string;
   fieldType: FieldType;
   required: boolean;
   measurementUnit?: string;
@@ -54,6 +55,7 @@ interface ActivityFormData {
 const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = [
   { value: 'text_short', label: 'Texto Corto', description: 'Campo de texto de una línea' },
   { value: 'text_long', label: 'Texto Largo', description: 'Área de texto multilínea' },
+  { value: 'constant', label: 'Constante', description: 'Texto fijo para incluir automáticamente en la historia clínica' },
   { value: 'number_simple', label: 'Número Simple', description: 'Campo numérico' },
   { value: 'number_compound', label: 'Número Compuesto', description: 'Ej: Sistólica/Diastólica' },
   { value: 'select_single', label: 'Selección', description: 'Lista de opciones (configurable: única o múltiple)' },
@@ -91,6 +93,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
       setFormData({
         name: activity.name,
         description: activity.description || '',
+        constantText: activity.constantText || '',
         fieldType: activity.fieldType,
         required: activity.required,
         measurementUnit: activity.measurementUnit,
@@ -120,6 +123,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
       setFormData({
         name: '',
         description: '',
+        constantText: '',
         fieldType: 'text_short',
         required: false,
         excludeFromRedactor: false,
@@ -368,6 +372,18 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
               rows={2}
               placeholder="Descripción breve del campo"
             />
+
+            {formData.fieldType === 'constant' && (
+              <TextField
+                label="Texto fijo para historia clínica"
+                value={formData.constantText || ''}
+                onChange={(e) => setFormData({ ...formData, constantText: e.target.value })}
+                fullWidth
+                multiline
+                rows={3}
+                placeholder="Este texto se agregará automáticamente en la historia clínica."
+              />
+            )}
 
             <FormControl fullWidth>
               <InputLabel>Tipo de Campo</InputLabel>
