@@ -1,5 +1,42 @@
 // Utilidades compartidas para formularios de visita
 
+import type { Activity } from '../../../types';
+
+/**
+ * Fecha local en formato YYYY-MM-DD (válido para input type="date").
+ */
+export const getLocalDateStringForInput = (date: Date = new Date()): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+/**
+ * Asigna la fecha de hoy a campos datetime con `isVisitDate`, solo si `${id}_date` aún no existe en el mapa
+ * (no pisa valores importados ni una fecha ya establecida).
+ * No aplica a datetime repetible con fecha por medición (no coincide con el uso de fecha de visita global).
+ */
+export const mergeVisitDateDefaults = (
+  prev: Record<string, any>,
+  activities: Activity[],
+): Record<string, any> => {
+  let next: Record<string, any> | null = null;
+  for (const a of activities) {
+    if (a.fieldType !== 'datetime') continue;
+    if (a.datetimeIncludeDate === false) continue;
+    if (!a.isVisitDate) continue;
+    if (a.allowMultiple && a.requireDatePerMeasurement !== false) continue;
+
+    const key = `${a.id}_date`;
+    if (key in prev) continue;
+
+    if (!next) next = { ...prev };
+    next[key] = getLocalDateStringForInput();
+  }
+  return next ?? prev;
+};
+
 /**
  * Normaliza tiempo a formato HH:MM
  */

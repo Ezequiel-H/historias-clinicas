@@ -34,7 +34,8 @@ export type FieldType =
   | 'file'                 // Archivo adjunto
   | 'conditional'         // Campo condicional
   | 'calculated'          // Campo calculado (se calcula automáticamente basado en otros campos)
-  | 'medication_tracking'; // Seguimiento de medicación
+  | 'medication_tracking' // Seguimiento de medicación
+  | 'adverse_events_list'; // Lista de eventos adversos (options = tipos de evento; UI agrega "Otro")
 
 // Configuración de un campo compuesto
 export interface CompoundFieldConfig {
@@ -51,6 +52,26 @@ export interface SelectOption {
   label: string;
   required?: boolean;      // Si es true, esta opción debe ser seleccionada obligatoriamente
   exclusive?: boolean;     // Si es true, si se selecciona esta opción, el paciente NO califica
+}
+
+/** Valor reservado para tipo de evento "Otro" (no debe duplicarse en activity.options) */
+export const ADVERSE_EVENT_TYPE_OTHER = '__other__' as const;
+
+export type AdverseEventSeriousness = 'serious' | 'not_serious' | 'other';
+export type AdverseEventIntensity = 'mild' | 'moderate' | 'severe';
+
+/** Un evento en fieldType adverse_events_list */
+export interface AdverseEventItem {
+  eventType: string;
+  eventTypeOther?: string;
+  startDate: string;
+  endDate?: string;
+  seriousness: AdverseEventSeriousness;
+  seriousnessOther?: string;
+  intensity: AdverseEventIntensity;
+  relatedToBaselineDisease: boolean;
+  relatedToStudyMedication: boolean;
+  relatedToStudyProcedure: boolean;
 }
 
 // Configuración de campo condicional
@@ -73,7 +94,7 @@ export interface Activity {
   expectedMin?: number;
   expectedMax?: number;
   decimalPlaces?: number;             // Cantidad de decimales para campos numéricos
-  options?: SelectOption[];           // Para select_single
+  options?: SelectOption[];           // Para select_single; para adverse_events_list = catálogo de tipo de evento
   selectMultiple?: boolean;           // Para select_single: si true, permite selección múltiple (checkbox), si false, selección única (radio)
   allowCustomOptions?: boolean;      // Para select_single con selectMultiple: permite agregar opciones personalizadas
   compoundConfig?: CompoundFieldConfig; // Para number_compound
@@ -158,8 +179,6 @@ export interface User {
   name: string;
   firstName?: string;
   lastName?: string;
-  licenseNumber?: string;
-  sealSignaturePhoto?: string;
   role: 'admin' | 'doctor' | 'investigador_principal';
   isActive: boolean;
   createdAt?: string;

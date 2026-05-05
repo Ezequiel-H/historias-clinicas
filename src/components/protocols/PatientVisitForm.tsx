@@ -29,6 +29,10 @@ import {
   ActivityFieldRenderer,
   calculateMedicationAdherence,
   detectAdherenceProblems,
+  mergeVisitDateDefaults,
+  validateAdverseEventsListRows,
+  rowsToPersistedList,
+  normalizeAdverseEventRows,
 } from './shared';
 import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 
@@ -138,9 +142,15 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
     });
     
     setActivityDescriptions(descriptions);
-    setFormValues(values);
+    setFormValues(mergeVisitDateDefaults(values, activities));
     initializedRef.current = true;
   }, [initialData, activities]);
+
+  useEffect(() => {
+    if (initialData?.activities) return;
+    setFormValues((prev) => mergeVisitDateDefaults(prev, activities));
+  }, [activities, initialData?.activities]);
+
   const [descriptionDialogOpen, setDescriptionDialogOpen] = useState(false);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [descriptionText, setDescriptionText] = useState('');
@@ -315,7 +325,14 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
   const buildValidationRules = (activity: Activity): ValidationFunction[] => {
     const rules: ValidationFunction[] = [];
 
-    if (activity.fieldType !== 'constant' && activity.required) {
+    if (activity.fieldType === 'adverse_events_list') {
+      rules.push((activity, value, _formValues, _index) => {
+        const r = validateAdverseEventsListRows(activity, value);
+        if (r.isValid) return { isValid: true };
+        return { isValid: false, error: r.error };
+      });
+    }
+    if (activity.fieldType !== 'constant' && activity.required && activity.fieldType !== 'adverse_events_list') {
       rules.push(validateRequired);
     }
     if (activity.requireDate) {
@@ -324,10 +341,18 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
     if (activity.requireTime) {
       rules.push(validateRequiredTime);
     }
-    if (activity.options && activity.options.some(opt => opt.required)) {
+    if (
+      activity.fieldType === 'select_single' &&
+      activity.options &&
+      activity.options.some(opt => opt.required)
+    ) {
       rules.push(validateRequiredOptions);
     }
-    if (activity.options && activity.options.some(opt => opt.exclusive)) {
+    if (
+      activity.fieldType === 'select_single' &&
+      activity.options &&
+      activity.options.some(opt => opt.exclusive)
+    ) {
       rules.push(validateExclusiveOptions);
     }
     if (activity.validationRules && activity.validationRules.length > 0) {
@@ -1147,6 +1172,8 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
                 }
               }
             }
+          } else if (activity.fieldType === 'adverse_events_list') {
+            activityObj.value = rowsToPersistedList(normalizeAdverseEventRows(rawValue));
           } else {
             activityObj.value = formattedValue;
           }

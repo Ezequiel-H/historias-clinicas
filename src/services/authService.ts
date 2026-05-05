@@ -16,8 +16,6 @@ export type SignupCredentials = {
   password: string;
   firstName: string;
   lastName: string;
-  licenseNumber: string;
-  sealSignaturePhoto: string;
 };
 
 class AuthService {
@@ -61,11 +59,6 @@ class AuthService {
   // Actualizar estado isActive de un usuario (solo admins)
   async updateUserStatus(userId: string, isActive: boolean): Promise<ApiResponse<User>> {
     return apiService.patch<ApiResponse<User>>(`/auth/users/${userId}`, { isActive });
-  }
-
-  // Actualizar foto de firma de un usuario (solo admins)
-  async updateUserSignaturePhoto(userId: string, sealSignaturePhoto: string): Promise<ApiResponse<User>> {
-    return apiService.patch<ApiResponse<User>>(`/auth/users/${userId}/signature-photo`, { sealSignaturePhoto });
   }
 }
 

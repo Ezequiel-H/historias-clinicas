@@ -33,6 +33,7 @@ import {
   preventNumberInputScroll,
 } from './visitFormUtils';
 import { MedicationTrackingField } from './MedicationTrackingField';
+import { AdverseEventsListField } from './AdverseEventsListField';
 
 // Tipos para las props del componente
 interface MedicationErrorState {
@@ -486,6 +487,28 @@ export const ActivityFieldRenderer: React.FC<ActivityFieldRendererProps> = ({
               }
             }}
             getVisitDate={getVisitDate}
+          />,
+          index
+        );
+      }
+
+      case 'adverse_events_list': {
+        const opts = activity.options;
+        if (!opts || opts.length === 0) {
+          return wrapField(
+            <Alert severity="warning">
+              No hay opciones de tipo de evento. Edite la actividad y agregue al menos una opción.
+            </Alert>,
+            index
+          );
+        }
+        return wrapField(
+          <AdverseEventsListField
+            options={opts}
+            value={fieldValue}
+            onChange={(rows) => handleChange(activity.id, rows, index)}
+            showValidation={showValidation}
+            required={activity.required || false}
           />,
           index
         );

@@ -10,6 +10,7 @@ import {
   Alert,
   Chip,
   Snackbar,
+  TextField,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -18,6 +19,7 @@ import {
   Error as ErrorIcon,
   CheckCircle as CheckCircleIcon,
   AutoAwesome as AutoAwesomeIcon,
+  ContentPaste as ContentPasteIcon,
 } from '@mui/icons-material';
 import type { Activity, ActivityRule } from '../../types';
 import protocolService from '../../services/protocolService';
@@ -29,6 +31,10 @@ import {
   ActivityFieldRenderer,
   calculateMedicationAdherence,
   detectAdherenceProblems,
+  mergeVisitDateDefaults,
+  validateAdverseEventsListRows,
+  rowsToPersistedList,
+  normalizeAdverseEventRows,
 } from './shared';
 import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 
@@ -56,6 +62,88 @@ type ValidationFunction = (
   index?: number
 ) => { isValid: boolean; error?: ValidationError };
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Objeto emitido por "Validar formulario" → Ver Objeto */
+function looksLikeValidatedFormExport(data: unknown): boolean {
+  if (!isPlainObject(data)) return false;
+  const act = data.activities;
+  if (!Array.isArray(act) || act.length === 0) return false;
+  const first = act[0];
+  return isPlainObject(first) && typeof first.id === 'string';
+}
+
+/**
+ * Convierte el JSON de salida de la validación al mapa interno del preview
+ * (`activityId`, `activityId_date`, `activityId_time_0`, etc.).
+ */
+function validatedActivitiesToFormValues(
+  items: any[],
+  activities: Activity[],
+): Record<string, any> {
+  const result: Record<string, any> = {};
+  const byId = new Map(activities.map(a => [a.id, a]));
+
+  for (const item of items) {
+    if (!item || typeof item.id !== 'string') continue;
+    const act = byId.get(item.id);
+    if (!act) continue;
+
+    if (Array.isArray(item.measurements) && item.measurements.length > 0) {
+      const repeatCount = act.repeatCount || item.measurements.length || 3;
+      const values = item.measurements.map((m: any) =>
+        m && m.value !== undefined && m.value !== null ? m.value : '',
+      );
+      while (values.length < repeatCount) {
+        values.push('');
+      }
+      result[act.id] = values.slice(0, repeatCount);
+
+      const isDatetime = act.fieldType === 'datetime';
+      const dateGlobal = act.requireDate && act.requireDatePerMeasurement === false;
+      const timeGlobal = act.requireTime && act.requireTimePerMeasurement === false;
+
+      item.measurements.forEach((m: any, i: number) => {
+        if (!m) return;
+        if (m.date) {
+          if (isDatetime && act.allowMultiple) {
+            result[`${act.id}_date_${i}`] = m.date;
+          } else if (dateGlobal) {
+            result[`${act.id}_date`] = m.date;
+          } else if (act.requireDate) {
+            result[`${act.id}_date_${i}`] = m.date;
+          }
+        }
+        if (m.time) {
+          const t = typeof m.time === 'string' ? normalizeTime(m.time) : m.time;
+          if (isDatetime && act.allowMultiple) {
+            result[`${act.id}_time_${i}`] = t;
+          } else if (timeGlobal) {
+            result[`${act.id}_time`] = t;
+          } else if (act.requireTime) {
+            result[`${act.id}_time_${i}`] = t;
+          }
+        }
+      });
+    } else {
+      if (item.value !== undefined) {
+        result[act.id] = item.value;
+      }
+      if (item.date) {
+        result[`${act.id}_date`] = item.date;
+      }
+      if (item.time) {
+        result[`${act.id}_time`] =
+          typeof item.time === 'string' ? normalizeTime(item.time) : item.time;
+      }
+    }
+  }
+
+  return result;
+}
+
 export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   open,
   onClose,
@@ -74,6 +162,9 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   const [showClinicalHistoryDialog, setShowClinicalHistoryDialog] = useState(false);
   const [clinicalHistoryText, setClinicalHistoryText] = useState('');
   const [clinicalHistoryError, setClinicalHistoryError] = useState('');
+  const [importJsonOpen, setImportJsonOpen] = useState(false);
+  const [importJsonText, setImportJsonText] = useState('');
+  const [importJsonError, setImportJsonError] = useState('');
   
   // Estado para manejar errores de adherencia y decisiones del médico
   const [medicationErrors, setMedicationErrors] = useState<Record<string, Record<string, {
@@ -153,8 +244,47 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       setShowClinicalHistoryDialog(false);
       setClinicalHistoryText('');
       setClinicalHistoryError('');
+      setImportJsonOpen(false);
+      setImportJsonText('');
+      setImportJsonError('');
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setFormValues((prev) => mergeVisitDateDefaults(prev, activities));
+  }, [open, activities]);
+
+  const handleApplyImportJson = () => {
+    setImportJsonError('');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(importJsonText);
+    } catch {
+      setImportJsonError('JSON inválido: no se pudo parsear.');
+      return;
+    }
+    if (!isPlainObject(parsed)) {
+      setImportJsonError('El JSON debe ser un objeto (por ejemplo { "idCampo": "valor", ... }).');
+      return;
+    }
+
+    let next: Record<string, any>;
+    if (looksLikeValidatedFormExport(parsed)) {
+      next = validatedActivitiesToFormValues(parsed.activities as any[], activities);
+    } else {
+      next = { ...formValues, ...(parsed as Record<string, any>) };
+    }
+
+    setFormValues(mergeVisitDateDefaults(next, activities));
+    prevFormValuesRef.current = {};
+    setShowValidation(false);
+    setValidationErrors([]);
+    setValidatedFormData(null);
+    setMedicationErrors({});
+    setImportJsonOpen(false);
+    setImportJsonText('');
+  };
 
   // Actualizar valores calculados automáticamente cuando cambien los valores del formulario
   // Usamos un ref para evitar loops infinitos
@@ -258,8 +388,16 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
   const buildValidationRules = (activity: Activity): ValidationFunction[] => {
     const rules: ValidationFunction[] = [];
 
+    if (activity.fieldType === 'adverse_events_list') {
+      rules.push((activity, value, _formValues, _index) => {
+        const r = validateAdverseEventsListRows(activity, value);
+        if (r.isValid) return { isValid: true };
+        return { isValid: false, error: r.error };
+      });
+    }
+
     // 1. Validación de campo requerido
-    if (activity.required) {
+    if (activity.required && activity.fieldType !== 'adverse_events_list') {
       rules.push(validateRequired);
     }
 
@@ -273,13 +411,21 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
       rules.push(validateRequiredTime);
     }
 
-    // 4. Validación de opciones obligatorias
-    if (activity.options && activity.options.some(opt => opt.required)) {
+    // 4. Validación de opciones obligatorias (solo selección)
+    if (
+      activity.fieldType === 'select_single' &&
+      activity.options &&
+      activity.options.some(opt => opt.required)
+    ) {
       rules.push(validateRequiredOptions);
     }
 
-    // 5. Validación de opciones excluyentes
-    if (activity.options && activity.options.some(opt => opt.exclusive)) {
+    // 5. Validación de opciones excluyentes (solo selección)
+    if (
+      activity.fieldType === 'select_single' &&
+      activity.options &&
+      activity.options.some(opt => opt.exclusive)
+    ) {
       rules.push(validateExclusiveOptions);
     }
 
@@ -1102,6 +1248,8 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
                 activityObj.time = normalizeTime(activityTime);
               }
             }
+          } else if (activity.fieldType === 'adverse_events_list') {
+            activityObj.value = rowsToPersistedList(normalizeAdverseEventRows(rawValue));
           } else {
             // Si no hay fecha/hora, incluir value normalmente
             activityObj.value = formattedValue;
@@ -1326,6 +1474,16 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
           {activities.length > 0 && (
             <>
               <Button
+                onClick={() => {
+                  setImportJsonError('');
+                  setImportJsonOpen(true);
+                }}
+                variant="outlined"
+                startIcon={<ContentPasteIcon />}
+              >
+                Cargar JSON
+              </Button>
+              <Button
                 onClick={() => setShowValuesDialog(true)}
                 variant="outlined"
                 startIcon={<CheckCircleIcon />}
@@ -1428,6 +1586,55 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         <DialogActions>
           <Button onClick={() => setShowValuesDialog(false)}>
             Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={importJsonOpen}
+        onClose={() => {
+          setImportJsonOpen(false);
+          setImportJsonError('');
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Cargar datos en el preview</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Pegá un objeto JSON. Podés usar el mismo formato que muestra &quot;Ver Objeto&quot; luego de validar
+            (propiedad <code>activities</code>), o un objeto plano cuyas claves coincidan con los ids de los
+            campos y los sufijos internos (<code>_date</code>, <code>_time</code>, <code>_date_0</code>, etc.); en
+            ese caso los valores se fusionan con el estado actual del preview.
+          </Typography>
+          {importJsonError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {importJsonError}
+            </Alert>
+          )}
+          <TextField
+            label="JSON"
+            value={importJsonText}
+            onChange={(e) => setImportJsonText(e.target.value)}
+            multiline
+            minRows={14}
+            fullWidth
+            spellCheck={false}
+            InputProps={{ sx: { fontFamily: 'monospace', fontSize: '0.875rem' } }}
+            placeholder='{ "visitName": "...", "activities": [ ... ] }'
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setImportJsonOpen(false);
+              setImportJsonError('');
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button variant="contained" onClick={handleApplyImportJson}>
+            Aplicar
           </Button>
         </DialogActions>
       </Dialog>

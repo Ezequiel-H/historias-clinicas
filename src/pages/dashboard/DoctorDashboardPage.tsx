@@ -45,9 +45,6 @@ export const DoctorDashboardPage: React.FC = () => {
                     Información Profesional
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Licencia: {user?.licenseNumber}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
                     Email: {user?.email}
                   </Typography>
                 </Box>

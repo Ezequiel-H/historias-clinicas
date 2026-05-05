@@ -5,6 +5,8 @@ export {
   isValidTime,
   addMinutesToTime,
   parseLocalDate,
+  getLocalDateStringForInput,
+  mergeVisitDateDefaults,
   handleDateFieldClick,
   dateFieldStyles,
   preventNumberInputScroll,
@@ -19,4 +21,12 @@ export {
 } from './MedicationTrackingField';
 
 export { ActivityFieldRenderer } from './ActivityFieldRenderer';
+
+export {
+  validateAdverseEventsListRows,
+  rowsToPersistedList,
+  normalizeAdverseEventRows,
+} from './adverseEventsListUtils';
+
+export { AdverseEventsListField } from './AdverseEventsListField';
 

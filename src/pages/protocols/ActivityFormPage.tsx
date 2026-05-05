@@ -47,6 +47,7 @@ import {
   Link as LinkIcon,
   Medication as MedicationIcon,
   Notes as NotesIcon,
+  ReportProblem as ReportProblemIcon,
 } from '@mui/icons-material';
 import type { FieldType, SelectOption, ActivityRule, MedicationTrackingConfig } from '../../types';
 import protocolService from '../../services/protocolService';
@@ -131,6 +132,13 @@ const FIELD_TYPES = [
     icon: <MedicationIcon />,
     color: '#ed6c02',
   },
+  {
+    value: 'adverse_events_list' as FieldType,
+    label: 'Lista de eventos adversos',
+    description: 'Varios eventos con tipo, fechas, seriedad, intensidad y relación con estudio',
+    icon: <ReportProblemIcon />,
+    color: '#c62828',
+  },
 ];
 
 export const ActivityFormPage: React.FC = () => {
@@ -166,6 +174,7 @@ export const ActivityFormPage: React.FC = () => {
     constantText: '',
     calculationFormula: '', // Fórmula para campos calculados
     excludeFromRedactor: false, // Si true, el resultado no se envía al redactor de historia clínica
+    order: 1,
   });
   const [optionsText, setOptionsText] = useState('');
   const [options, setOptions] = useState<SelectOption[]>([]);
@@ -201,6 +210,28 @@ export const ActivityFormPage: React.FC = () => {
       loadAvailableActivities();
     }
   }, [isEditMode, protocolId, visitId, activityId]);
+
+  // Modo creación: asignar orden al final (evita enviar order: 1 al guardar y pisar el orden de la visita)
+  useEffect(() => {
+    if (isEditMode || !protocolId || !visitId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await protocolService.getProtocolById(protocolId);
+        const visit = response.data.visits.find((v) => v.id === visitId);
+        const list = visit?.activities || [];
+        const maxOrder = list.length ? Math.max(...list.map((a) => Number(a.order) || 0)) : 0;
+        if (!cancelled) {
+          setFormData((prev) => ({ ...prev, order: maxOrder + 1 }));
+        }
+      } catch {
+        if (!cancelled) setFormData((prev) => ({ ...prev, order: 1 }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditMode, protocolId, visitId]);
 
   // Cargar actividades disponibles cuando se necesita para campos condicionales
   useEffect(() => {
@@ -311,15 +342,22 @@ export const ActivityFormPage: React.FC = () => {
             : selectMultiple; // Usar el valor migrado si no existe la propiedad
         }
         
+        const loadedDisallowMultiple =
+          fieldType === 'constant' ||
+          fieldType === 'calculated' ||
+          fieldType === 'medication_tracking' ||
+          fieldType === 'adverse_events_list';
+
         setFormData({
           name: activity.name,
           description: activity.description || '',
           fieldType: fieldType,
           required: activity.required,
-          allowMultiple: activity.allowMultiple || false,
+          allowMultiple: loadedDisallowMultiple ? false : (activity.allowMultiple || false),
           selectMultiple: selectMultiple,
           allowCustomOptions: activity.allowCustomOptions || false,
           repeatCount: activity.repeatCount || 3,
+          order: typeof activity.order === 'number' ? activity.order : 1,
           datetimeIncludeDate: datetimeIncludeDate,
           datetimeIncludeTime: datetimeIncludeTime,
           isVisitDate: activity.isVisitDate || false,
@@ -413,11 +451,16 @@ export const ActivityFormPage: React.FC = () => {
 
   const handleSelectType = (type: FieldType) => {
     const isConstant = type === 'constant';
+    const disallowMultiple =
+      isConstant ||
+      type === 'calculated' ||
+      type === 'medication_tracking' ||
+      type === 'adverse_events_list';
     setFormData({
       ...formData,
       fieldType: type,
       required: isConstant ? false : formData.required,
-      allowMultiple: isConstant ? false : formData.allowMultiple,
+      allowMultiple: disallowMultiple ? false : formData.allowMultiple,
       requireDate: isConstant ? false : formData.requireDate,
       requireTime: isConstant ? false : formData.requireTime,
     });
@@ -461,7 +504,7 @@ export const ActivityFormPage: React.FC = () => {
       description: formData.description?.trim() || '',
       fieldType: formData.fieldType,
       required: formData.fieldType === 'constant' ? false : formData.required,
-      order: 1, // El backend asignará el orden correcto
+      order: formData.order,
     };
 
     // Agregar configuraciones opcionales
@@ -505,7 +548,11 @@ export const ActivityFormPage: React.FC = () => {
     activityData.helpText = formData.helpText || '';
     activityData.constantText = formData.fieldType === 'constant' ? (formData.constantText || '').trim() : '';
     activityData.excludeFromRedactor = formData.excludeFromRedactor || false;
-    if (formData.allowMultiple) {
+    if (
+      formData.allowMultiple &&
+      formData.fieldType !== 'adverse_events_list' &&
+      formData.fieldType !== 'medication_tracking'
+    ) {
       activityData.allowMultiple = formData.allowMultiple;
       activityData.repeatCount = formData.repeatCount;
     }
@@ -544,8 +591,8 @@ export const ActivityFormPage: React.FC = () => {
       }
     }
 
-    // Parsear opciones si es campo de selección
-    if (formData.fieldType === 'select_single') {
+    // Parsear opciones si es campo de selección o lista de eventos adversos (tipos de evento)
+    if (formData.fieldType === 'select_single' || formData.fieldType === 'adverse_events_list') {
       // Usar el array de opciones si está disponible, sino parsear del texto
       if (options.length > 0) {
         // Asegurar que value = label para facilitar la escritura de la historia clínica
@@ -617,6 +664,13 @@ export const ActivityFormPage: React.FC = () => {
       setError('Para el tipo constante, el texto fijo es obligatorio');
       return;
     }
+    if (
+      formData.fieldType === 'adverse_events_list' &&
+      (!options.length || !options.some((o) => (o.label || o.value || '').trim()))
+    ) {
+      setError('Lista de eventos adversos: agregá al menos una opción de tipo de evento con etiqueta.');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -665,7 +719,7 @@ export const ActivityFormPage: React.FC = () => {
   };
 
   const needsUnit = formData.fieldType === 'number_simple' || formData.fieldType === 'number_compound' || formData.fieldType === 'calculated';
-  const needsOptions = formData.fieldType === 'select_single';
+  const needsOptions = formData.fieldType === 'select_single' || formData.fieldType === 'adverse_events_list';
   const isConstantField = formData.fieldType === 'constant';
 
   if (loadingData) {
@@ -1022,21 +1076,28 @@ export const ActivityFormPage: React.FC = () => {
 
           {needsOptions && (
             <Box>
-              {/* Checkbox para selección múltiple */}
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.selectMultiple || false}
-                    onChange={(e) => setFormData({ ...formData, selectMultiple: e.target.checked })}
-                  />
-                }
-                label="Permitir selección múltiple (el médico podrá elegir varias opciones)"
-                sx={{ mb: 2 }}
-              />
-              
+              {formData.fieldType === 'select_single' && (
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={formData.selectMultiple || false}
+                      onChange={(e) => setFormData({ ...formData, selectMultiple: e.target.checked })}
+                    />
+                  }
+                  label="Permitir selección múltiple (el médico podrá elegir varias opciones)"
+                  sx={{ mb: 2 }}
+                />
+              )}
+
+              {formData.fieldType === 'adverse_events_list' && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Definí los tipos de evento que aparecerán en el desplegable. En la visita siempre habrá además la opción <strong>Otro</strong> con texto libre.
+                </Alert>
+              )}
+
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                 <Typography variant="subtitle2">
-                  Opciones Disponibles
+                  {formData.fieldType === 'adverse_events_list' ? 'Tipos de evento' : 'Opciones Disponibles'}
                 </Typography>
                 <Button
                   size="small"
@@ -1044,7 +1105,7 @@ export const ActivityFormPage: React.FC = () => {
                   startIcon={<AddIcon />}
                   onClick={() => {
                     const newOption: SelectOption = {
-                      value: '', // Se establecerá igual a label cuando se escriba
+                      value: '',
                       label: '',
                       required: false,
                       exclusive: false,
@@ -1052,22 +1113,30 @@ export const ActivityFormPage: React.FC = () => {
                     setOptions([...options, newOption]);
                   }}
                 >
-                  Agregar Opción
+                  {formData.fieldType === 'adverse_events_list' ? 'Agregar tipo' : 'Agregar Opción'}
                 </Button>
               </Box>
-              
+
               {options.length === 0 ? (
                 <Alert severity="info">
-                  No hay opciones configuradas. Haz clic en "Agregar Opción" para comenzar.
+                  {formData.fieldType === 'adverse_events_list'
+                    ? 'Agregá al menos un tipo de evento.'
+                    : 'No hay opciones configuradas. Haz clic en "Agregar Opción" para comenzar.'}
                 </Alert>
               ) : (
                 <TableContainer component={Paper} variant="outlined">
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell>Opción</TableCell>
-                        <TableCell align="center">Obligatoria</TableCell>
-                        <TableCell align="center">Excluyente</TableCell>
+                        <TableCell>
+                          {formData.fieldType === 'adverse_events_list' ? 'Tipo de evento' : 'Opción'}
+                        </TableCell>
+                        {formData.fieldType === 'select_single' && (
+                          <>
+                            <TableCell align="center">Obligatoria</TableCell>
+                            <TableCell align="center">Excluyente</TableCell>
+                          </>
+                        )}
                         <TableCell align="center">Acciones</TableCell>
                       </TableRow>
                     </TableHead>
@@ -1081,40 +1150,47 @@ export const ActivityFormPage: React.FC = () => {
                               onChange={(e) => {
                                 const updated = [...options];
                                 updated[index].label = e.target.value;
-                                // El valor será igual a la etiqueta
                                 updated[index].value = e.target.value;
                                 setOptions(updated);
                               }}
-                              placeholder="Ej: Hipertensión"
+                              placeholder={
+                                formData.fieldType === 'adverse_events_list'
+                                  ? 'Ej: Náusea'
+                                  : 'Ej: Hipertensión'
+                              }
                               fullWidth
                             />
                           </TableCell>
-                          <TableCell align="center">
-                            <Checkbox
-                              checked={option.required || false}
-                              onChange={(e) => {
-                                const updated = [...options];
-                                updated[index].required = e.target.checked;
-                                if (e.target.checked) {
-                                  updated[index].exclusive = false; // No puede ser ambas
-                                }
-                                setOptions(updated);
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell align="center">
-                            <Checkbox
-                              checked={option.exclusive || false}
-                              onChange={(e) => {
-                                const updated = [...options];
-                                updated[index].exclusive = e.target.checked;
-                                if (e.target.checked) {
-                                  updated[index].required = false; // No puede ser ambas
-                                }
-                                setOptions(updated);
-                              }}
-                            />
-                          </TableCell>
+                          {formData.fieldType === 'select_single' && (
+                            <>
+                              <TableCell align="center">
+                                <Checkbox
+                                  checked={option.required || false}
+                                  onChange={(e) => {
+                                    const updated = [...options];
+                                    updated[index].required = e.target.checked;
+                                    if (e.target.checked) {
+                                      updated[index].exclusive = false;
+                                    }
+                                    setOptions(updated);
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell align="center">
+                                <Checkbox
+                                  checked={option.exclusive || false}
+                                  onChange={(e) => {
+                                    const updated = [...options];
+                                    updated[index].exclusive = e.target.checked;
+                                    if (e.target.checked) {
+                                      updated[index].required = false;
+                                    }
+                                    setOptions(updated);
+                                  }}
+                                />
+                              </TableCell>
+                            </>
+                          )}
                           <TableCell align="center">
                             <IconButton
                               size="small"
@@ -1132,20 +1208,27 @@ export const ActivityFormPage: React.FC = () => {
                   </Table>
                 </TableContainer>
               )}
-              
-              <Alert severity="info" sx={{ mt: 2 }}>
-                <Typography variant="body2" gutterBottom>
-                  <strong>Opción:</strong> El texto que verá el médico y que se guardará en la historia clínica (ej: "Hipertensión").
-                </Typography>
-                <Typography variant="body2" gutterBottom>
-                  <strong>Obligatoria:</strong> Esta opción debe ser seleccionada para que el paciente califique para el protocolo.
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Excluyente:</strong> Si esta opción es seleccionada, el paciente NO califica para el protocolo.
-                </Typography>
-              </Alert>
-              
-              {/* Checkbox para permitir opciones personalizadas (solo si es selección múltiple) */}
+
+              {formData.fieldType === 'select_single' ? (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="body2" gutterBottom>
+                    <strong>Opción:</strong> El texto que verá el médico y que se guardará en la historia clínica (ej: &quot;Hipertensión&quot;).
+                  </Typography>
+                  <Typography variant="body2" gutterBottom>
+                    <strong>Obligatoria:</strong> Esta opción debe ser seleccionada para que el paciente califique para el protocolo.
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Excluyente:</strong> Si esta opción es seleccionada, el paciente NO califica para el protocolo.
+                  </Typography>
+                </Alert>
+              ) : (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="body2">
+                    Cada fila es una opción del desplegable &quot;Tipo de evento&quot; al cargar la visita (más &quot;Otro&quot; automático).
+                  </Typography>
+                </Alert>
+              )}
+
               {formData.fieldType === 'select_single' && formData.selectMultiple && (
                 <FormControlLabel
                   control={
@@ -1426,7 +1509,12 @@ export const ActivityFormPage: React.FC = () => {
                     <Checkbox
                       checked={formData.allowMultiple}
                       onChange={(e) => setFormData({ ...formData, allowMultiple: e.target.checked })}
-                      disabled={formData.fieldType === 'calculated' || isConstantField} // Los campos calculados/constantes no pueden tener múltiples mediciones
+                      disabled={
+                        formData.fieldType === 'calculated' ||
+                        isConstantField ||
+                        formData.fieldType === 'medication_tracking' ||
+                        formData.fieldType === 'adverse_events_list'
+                      }
                     />
                   }
                   label="Permitir Múltiples Mediciones (ej: tomar PA 3 veces)"
@@ -1894,6 +1982,12 @@ export const ActivityFormPage: React.FC = () => {
                   </Box>
                 )}
               </Box>
+            )}
+
+            {formData.fieldType === 'adverse_events_list' && (
+              <Typography variant="body2" color="text.secondary">
+                Lista dinámica de eventos (tipo desde {options.length || 0} opciones + Otro, fechas, seriedad, intensidad, relación con estudio).
+              </Typography>
             )}
             
             {formData.fieldType === 'boolean' && (

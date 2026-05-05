@@ -64,6 +64,7 @@ const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = 
   { value: 'file', label: 'Archivo Adjunto', description: 'Subir archivo (PDF, imagen, etc.)' },
   { value: 'conditional', label: 'Campo Condicional', description: 'Se muestra según otra respuesta' },
   { value: 'medication_tracking', label: 'Seguimiento de Medicación', description: 'Registro y cálculo de adherencia al tratamiento (pill count)' },
+  { value: 'adverse_events_list', label: 'Lista de eventos adversos', description: 'Tipos configurables + Otro; fechas, seriedad, intensidad y relación con estudio' },
 ];
 
 export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, onSave }) => {
@@ -191,8 +192,10 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
       excludeFromRedactor: formData.excludeFromRedactor || false,
     };
 
-    // Parsear opciones si es campo de selección
-    if (formData.fieldType === 'select_single' && optionsText) {
+    if (
+      (formData.fieldType === 'select_single' || formData.fieldType === 'adverse_events_list') &&
+      optionsText
+    ) {
       activityData.options = parseOptions(optionsText);
     }
 
@@ -237,7 +240,8 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
 
   const sortedActivities = [...activities].sort((a, b) => a.order - b.order);
 
-  const needsOptions = formData.fieldType === 'select_single';
+  const needsOptions =
+    formData.fieldType === 'select_single' || formData.fieldType === 'adverse_events_list';
   const needsUnit = formData.fieldType === 'number_simple';
   const needsMedicationConfig = formData.fieldType === 'medication_tracking';
 
@@ -390,7 +394,20 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
               <Select
                 value={formData.fieldType}
                 label="Tipo de Campo"
-                onChange={(e) => setFormData({ ...formData, fieldType: e.target.value as FieldType })}
+                onChange={(e) => {
+                  const ft = e.target.value as FieldType;
+                  const clearMulti =
+                    ft === 'adverse_events_list' ||
+                    ft === 'medication_tracking' ||
+                    ft === 'calculated' ||
+                    ft === 'constant';
+                  setFormData({
+                    ...formData,
+                    fieldType: ft,
+                    allowMultiple: clearMulti ? false : formData.allowMultiple,
+                    required: ft === 'constant' ? false : formData.required,
+                  });
+                }}
               >
                 {FIELD_TYPES.map((ft) => (
                   <MenuItem key={ft.value} value={ft.value}>
@@ -462,6 +479,12 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
                   <Checkbox
                     checked={formData.allowMultiple || false}
                     onChange={(e) => setFormData({ ...formData, allowMultiple: e.target.checked })}
+                    disabled={
+                      formData.fieldType === 'calculated' ||
+                      formData.fieldType === 'constant' ||
+                      formData.fieldType === 'medication_tracking' ||
+                      formData.fieldType === 'adverse_events_list'
+                    }
                   />
                 }
                 label="Permitir Múltiples Mediciones"
@@ -484,8 +507,13 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
             {needsOptions && (
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  Opciones
+                  {formData.fieldType === 'adverse_events_list' ? 'Tipos de evento (una por línea)' : 'Opciones'}
                 </Typography>
+                {formData.fieldType === 'adverse_events_list' && (
+                  <Alert severity="info" sx={{ mb: 1 }}>
+                    En la visita se agregará automáticamente la opción Otro con texto libre.
+                  </Alert>
+                )}
                 <TextField
                   value={optionsText}
                   onChange={(e) => setOptionsText(e.target.value)}
