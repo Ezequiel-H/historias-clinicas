@@ -502,12 +502,6 @@ export const TemplateConfigPage: React.FC = () => {
         </Box>
       </Paper>
 
-      {/* Info */}
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Configurá todos los campos/preguntas que formarán parte de esta plantilla. 
-        Después podrás importar esta plantilla en cualquier visita para reutilizar estas preguntas.
-      </Alert>
-
       {/* Botón principal para agregar */}
       <Paper sx={{ p: 3, mb: 3, textAlign: 'center', bgcolor: 'primary.light' }}>
         <Typography variant="h6" gutterBottom>

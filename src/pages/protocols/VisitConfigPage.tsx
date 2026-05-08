@@ -20,6 +20,8 @@ import {
   ListItem,
   ListItemText,
   ListItemButton,
+  TextField,
+  Checkbox,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -32,6 +34,8 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   FileCopy as ImportIcon,
+  ContentCopy as CopyIcon,
+  ContentPaste as PasteIcon,
 } from '@mui/icons-material';
 import {
   DndContext,
@@ -61,6 +65,10 @@ interface SortableItemProps {
   index: number;
   onEdit: (activityId: string) => void;
   onDelete: (activityId: string) => void;
+  onCopy: (activity: Activity) => void;
+  isMultiSelectMode: boolean;
+  isSelected: boolean;
+  onToggleSelect: (activityId: string) => void;
   getFieldTypeLabel: (type: string) => string;
   isReordering: boolean;
 }
@@ -70,6 +78,10 @@ const SortableItem: React.FC<SortableItemProps> = ({
   index,
   onEdit,
   onDelete,
+  onCopy,
+  isMultiSelectMode,
+  isSelected,
+  onToggleSelect,
   getFieldTypeLabel,
   isReordering,
 }) => {
@@ -96,13 +108,19 @@ const SortableItem: React.FC<SortableItemProps> = ({
             <DragIcon
               sx={{
                 color: 'text.secondary',
-                cursor: 'grab',
+                cursor: isMultiSelectMode ? 'default' : 'grab',
                 mt: 0.5,
-                '&:active': { cursor: 'grabbing' },
+                '&:active': { cursor: isMultiSelectMode ? 'default' : 'grabbing' },
               }}
-              {...attributes}
-              {...listeners}
+              {...(!isMultiSelectMode ? { ...attributes, ...listeners } : {})}
             />
+            {isMultiSelectMode && (
+              <Checkbox
+                checked={isSelected}
+                onChange={() => onToggleSelect(activity.id)}
+                sx={{ mt: -0.5 }}
+              />
+            )}
             <Box flex={1}>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
                 <Typography variant="h6" component="div">
@@ -272,23 +290,33 @@ const SortableItem: React.FC<SortableItemProps> = ({
           </Box>
         </CardContent>
         <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
-          <Button
+          <IconButton
+            aria-label="copiar pregunta"
+            onClick={() => onCopy(activity)}
+            disabled={isDragging || isReordering}
             size="small"
-            startIcon={<EditIcon />}
+            color="secondary"
+          >
+            <CopyIcon />
+          </IconButton>
+          <IconButton
+            aria-label="editar pregunta"
             onClick={() => onEdit(activity.id)}
             disabled={isDragging || isReordering}
-          >
-            Editar
-          </Button>
-          <Button
             size="small"
-            color="error"
-            startIcon={<DeleteIcon />}
+            color="primary"
+          >
+            <EditIcon />
+          </IconButton>
+          <IconButton
+            aria-label="eliminar pregunta"
             onClick={() => onDelete(activity.id)}
             disabled={isDragging || isReordering}
+            size="small"
+            color="error"
           >
-            Eliminar
-          </Button>
+            <DeleteIcon />
+          </IconButton>
         </CardActions>
       </Card>
     </div>
@@ -309,6 +337,11 @@ export const VisitConfigPage: React.FC = () => {
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [importing, setImporting] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
+  const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
+  const [pasteJson, setPasteJson] = useState('');
+  const [pasting, setPasting] = useState(false);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -353,6 +386,127 @@ export const VisitConfigPage: React.FC = () => {
 
   const handleAddActivity = () => {
     navigate(`/protocols/${protocolId}/visits/${visitId}/activities/new`);
+  };
+
+  const buildClipboardActivityConfig = (activity: Activity) => {
+    const { id, visitId: _visitId, order: _order, ...config } = activity;
+    return {
+      ...config,
+      validationRules: activity.validationRules?.map(({ id: _ruleId, ...rule }) => rule),
+    };
+  };
+
+  const handleCopyActivityConfig = async (activity: Activity) => {
+    try {
+      const config = buildClipboardActivityConfig(activity);
+      await navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+      setError('');
+    } catch (err) {
+      console.error('Error al copiar configuración:', err);
+      setError('No se pudo copiar la configuración. Verificá permisos del navegador para portapapeles.');
+    }
+  };
+
+  const toggleMultiSelectMode = () => {
+    setIsMultiSelectMode((prev) => {
+      if (prev) {
+        setSelectedActivityIds([]);
+      }
+      return !prev;
+    });
+  };
+
+  const handleToggleSelectedActivity = (activityId: string) => {
+    setSelectedActivityIds((prev) => {
+      if (prev.includes(activityId)) {
+        return prev.filter((id) => id !== activityId);
+      }
+      return [...prev, activityId];
+    });
+  };
+
+  const handleCopySelectedActivities = async () => {
+    if (selectedActivityIds.length === 0) {
+      setError('Seleccioná al menos una pregunta para copiar.');
+      return;
+    }
+
+    const selectedSet = new Set(selectedActivityIds);
+    const selectedActivities = activities.filter((activity) => selectedSet.has(activity.id));
+
+    if (selectedActivities.length === 0) {
+      setError('No se encontraron preguntas seleccionadas para copiar.');
+      return;
+    }
+
+    try {
+      const configs = selectedActivities.map(buildClipboardActivityConfig);
+      await navigator.clipboard.writeText(JSON.stringify(configs, null, 2));
+      setPasteJson(JSON.stringify(configs, null, 2));
+      setError('');
+    } catch (err) {
+      console.error('Error al copiar preguntas:', err);
+      setError('No se pudieron copiar las preguntas seleccionadas.');
+    }
+  };
+
+  const handleOpenPasteDialog = async () => {
+    setPasteDialogOpen(true);
+    try {
+      if (!navigator.clipboard?.readText) {
+        return;
+      }
+      const clipboardText = await navigator.clipboard.readText();
+      if (clipboardText?.trim()) {
+        setPasteJson(clipboardText);
+      }
+    } catch (err) {
+      console.error('No se pudo leer el portapapeles:', err);
+    }
+  };
+
+  const handlePasteActivityConfig = async () => {
+    if (!pasteJson.trim()) {
+      setError('Pegá un JSON de configuración antes de continuar.');
+      return;
+    }
+
+    try {
+      setPasting(true);
+      setError('');
+      const parsedConfig = JSON.parse(pasteJson);
+      const configsToCreate = Array.isArray(parsedConfig)
+        ? parsedConfig
+        : Array.isArray(parsedConfig?.activities)
+          ? parsedConfig.activities
+          : [parsedConfig];
+
+      if (configsToCreate.length === 0) {
+        setError('No hay preguntas para pegar en el JSON.');
+        return;
+      }
+
+      for (let index = 0; index < configsToCreate.length; index += 1) {
+        const activityData = {
+          ...configsToCreate[index],
+          order: activities.length + index + 1,
+        };
+        await protocolService.addActivity(protocolId!, visitId!, activityData);
+      }
+
+      await loadVisitData();
+      setPasteDialogOpen(false);
+      setPasteJson('');
+    } catch (err) {
+      console.error('Error al pegar configuración:', err);
+      if (err instanceof SyntaxError) {
+        setError('El contenido pegado no es un JSON válido.');
+      } else {
+        setError('No se pudo crear la actividad con ese JSON. Revisá la configuración e intentá nuevamente.');
+      }
+    } finally {
+      setPasting(false);
+    }
   };
 
   const handleEditActivity = (activityId: string) => {
@@ -492,6 +646,15 @@ export const VisitConfigPage: React.FC = () => {
         </Alert>
       )}
 
+      <Box display="flex" justifyContent="flex-end" mb={2}>
+        <Button
+          variant={isMultiSelectMode ? 'contained' : 'outlined'}
+          onClick={toggleMultiSelectMode}
+        >
+          {isMultiSelectMode ? 'Cancelar selección múltiple' : 'Seleccionar múltiples preguntas'}
+        </Button>
+      </Box>
+
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
@@ -537,26 +700,29 @@ export const VisitConfigPage: React.FC = () => {
         </Box>
       </Box>
 
-      {/* Info */}
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Configurá todos los campos/preguntas que deben completarse en esta visita. 
-        Los médicos verán estos campos cuando carguen una visita de este tipo.
-      </Alert>
-
       {/* Botón principal para agregar */}
       <Paper sx={{ p: 3, mb: 3, textAlign: 'center', bgcolor: 'primary.light' }}>
         <Typography variant="h6" gutterBottom>
           {activities.length === 0 ? '¡Empezá agregando el primer campo!' : 'Agregá más campos'}
         </Typography>
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={<AddIcon />}
-          onClick={handleAddActivity}
-          sx={{ mt: 2 }}
-        >
-          Agregar Campo / Pregunta
-        </Button>
+        <Box display="flex" justifyContent="center" gap={2} flexWrap="wrap" sx={{ mt: 2 }}>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<AddIcon />}
+            onClick={handleAddActivity}
+          >
+            Agregar Campo / Pregunta
+          </Button>
+          <Button
+            variant="outlined"
+            size="large"
+            startIcon={<PasteIcon />}
+            onClick={handleOpenPasteDialog}
+          >
+            Pegar pregunta
+          </Button>
+        </Box>
       </Paper>
 
       {/* Lista de campos configurados */}
@@ -566,6 +732,16 @@ export const VisitConfigPage: React.FC = () => {
             <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>
               Campos Configurados ({activities.length})
             </Typography>
+            {isMultiSelectMode && (
+              <Button
+                variant="outlined"
+                startIcon={<CopyIcon />}
+                onClick={handleCopySelectedActivities}
+                disabled={selectedActivityIds.length === 0}
+              >
+                Copiar seleccionadas ({selectedActivityIds.length})
+              </Button>
+            )}
             {isReordering && (
               <Box display="flex" alignItems="center" gap={1}>
                 <CircularProgress size={16} />
@@ -593,6 +769,10 @@ export const VisitConfigPage: React.FC = () => {
                     index={index}
                     onEdit={handleEditActivity}
                     onDelete={handleDeleteActivity}
+                    onCopy={handleCopyActivityConfig}
+                    isMultiSelectMode={isMultiSelectMode}
+                    isSelected={selectedActivityIds.includes(activity.id)}
+                    onToggleSelect={handleToggleSelectedActivity}
                     getFieldTypeLabel={getFieldTypeLabel}
                     isReordering={isReordering}
                   />
@@ -685,6 +865,43 @@ export const VisitConfigPage: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setImportDialogOpen(false)} disabled={importing}>
             Cancelar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para pegar configuración JSON */}
+      <Dialog
+        open={pasteDialogOpen}
+        onClose={() => !pasting && setPasteDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Pegar JSON de Configuración</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Pegá el JSON copiado desde otra actividad. Se creará un nuevo campo en esta visita con esa configuración.
+          </Alert>
+          <TextField
+            fullWidth
+            multiline
+            minRows={12}
+            label="JSON de actividad"
+            value={pasteJson}
+            onChange={(e) => setPasteJson(e.target.value)}
+            placeholder='{"name":"Presión arterial","fieldType":"number_compound","required":true}'
+            disabled={pasting}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPasteDialogOpen(false)} disabled={pasting}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handlePasteActivityConfig}
+            disabled={pasting}
+          >
+            {pasting ? 'Pegando...' : 'Crear desde JSON'}
           </Button>
         </DialogActions>
       </Dialog>
