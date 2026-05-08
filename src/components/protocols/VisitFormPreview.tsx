@@ -1351,7 +1351,10 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         visitId,
         validatedFormData
       );
-      setClinicalHistoryText(generatedText);
+      const normalizedText = generatedText
+        .replace(/\r\n/g, '\n')
+        .replace(/\\n/g, '\n');
+      setClinicalHistoryText(normalizedText);
       setShowClinicalHistoryDialog(true);
     } catch (error: any) {
       setClinicalHistoryError(
@@ -1639,7 +1642,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         </DialogActions>
       </Dialog>
 
-      {/* Dialog para mostrar texto generado por IA */}
+      {/* Dialog para mostrar texto generado */}
       <Dialog
         open={showClinicalHistoryDialog}
         onClose={() => setShowClinicalHistoryDialog(false)}
@@ -1649,7 +1652,7 @@ export const VisitFormPreview: React.FC<VisitFormPreviewProps> = ({
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
             <AutoAwesomeIcon color="primary" />
-            <Typography variant="h6">Historia Clínica Generada por IA</Typography>
+            <Typography variant="h6">Historia Clínica Generada</Typography>
           </Box>
         </DialogTitle>
         <DialogContent>
