@@ -19,6 +19,8 @@ import {
 } from '@mui/material';
 import {
   Menu as MenuIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
   Dashboard as DashboardIcon,
   Description as DescriptionIcon,
   People as PeopleIcon,
@@ -26,6 +28,7 @@ import {
   AccountCircle as AccountIcon,
   ContentCopy as TemplateIcon,
 } from '@mui/icons-material';
+import { useTheme } from '@mui/material/styles';
 import { useAuth } from '../../contexts/AuthContext';
 
 const drawerWidth = 240;
@@ -78,7 +81,9 @@ const getMenuItems = (userRole?: string): MenuItemType[] => {
 };
 
 export const DashboardLayout: React.FC = () => {
+  const theme = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopDrawerOpen, setDesktopDrawerOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -86,6 +91,10 @@ export const DashboardLayout: React.FC = () => {
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
+  };
+
+  const handleDesktopDrawerToggle = () => {
+    setDesktopDrawerOpen((prev) => !prev);
   };
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -156,13 +165,21 @@ export const DashboardLayout: React.FC = () => {
     </Box>
   );
 
+  const drawerTransition = theme.transitions.create(['margin', 'width'], {
+    easing: theme.transitions.easing.sharp,
+    duration: theme.transitions.duration.leavingScreen,
+  });
+
   return (
     <Box sx={{ display: 'flex' }}>
       <AppBar
         position="fixed"
         sx={{
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` },
+          width: {
+            sm: desktopDrawerOpen ? `calc(100% - ${drawerWidth}px)` : '100%',
+          },
+          ml: { sm: desktopDrawerOpen ? `${drawerWidth}px` : 0 },
+          transition: drawerTransition,
         }}
       >
         <Toolbar>
@@ -174,6 +191,15 @@ export const DashboardLayout: React.FC = () => {
             sx={{ mr: 2, display: { sm: 'none' } }}
           >
             <MenuIcon />
+          </IconButton>
+          <IconButton
+            color="inherit"
+            aria-label={desktopDrawerOpen ? 'Ocultar menú lateral' : 'Mostrar menú lateral'}
+            edge="start"
+            onClick={handleDesktopDrawerToggle}
+            sx={{ mr: 2, display: { xs: 'none', sm: 'inline-flex' } }}
+          >
+            {desktopDrawerOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Sistema de Gestión de Protocolos Clínicos
@@ -219,7 +245,12 @@ export const DashboardLayout: React.FC = () => {
       </AppBar>
       <Box
         component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
+        sx={{
+          width: { sm: desktopDrawerOpen ? drawerWidth : 0 },
+          flexShrink: { sm: 0 },
+          transition: drawerTransition,
+          overflow: 'hidden',
+        }}
       >
         <Drawer
           variant="temporary"
@@ -239,7 +270,16 @@ export const DashboardLayout: React.FC = () => {
           variant="permanent"
           sx={{
             display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
+              width: desktopDrawerOpen ? drawerWidth : 0,
+              overflowX: 'hidden',
+              transition: theme.transitions.create('width', {
+                easing: theme.transitions.easing.sharp,
+                duration: theme.transitions.duration.leavingScreen,
+              }),
+              whiteSpace: 'nowrap',
+            },
           }}
           open
         >
@@ -251,9 +291,12 @@ export const DashboardLayout: React.FC = () => {
         sx={{
           flexGrow: 1,
           p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          width: {
+            sm: desktopDrawerOpen ? `calc(100% - ${drawerWidth}px)` : '100%',
+          },
           minHeight: '100vh',
           backgroundColor: 'grey.50',
+          transition: drawerTransition,
         }}
       >
         <Toolbar />
