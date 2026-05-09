@@ -180,7 +180,7 @@ export const ActivityFormPage: React.FC = () => {
   const [options, setOptions] = useState<SelectOption[]>([]);
   const [validationRules, setValidationRules] = useState<ActivityRule[]>([]);
   const [availableActivities, setAvailableActivities] = useState<string[]>([]);
-  const [availableActivitiesForConditional, setAvailableActivitiesForConditional] = useState<Array<{id: string, name: string, fieldType: FieldType, options?: SelectOption[]}>>([]);
+  const [availableActivitiesForConditional, setAvailableActivitiesForConditional] = useState<Array<{id: string, name: string, fieldType: FieldType, options?: SelectOption[], requireTime?: boolean, datetimeIncludeTime?: boolean}>>([]);
   const [conditionalConfig, setConditionalConfig] = useState<{dependsOn: string, showWhen: string | boolean}>({
     dependsOn: '',
     showWhen: '',
@@ -201,6 +201,9 @@ export const ActivityFormPage: React.FC = () => {
   const [error, setError] = useState('');
 
   const selectedFieldType = FIELD_TYPES.find(ft => ft.value === formData.fieldType);
+  const availableActivitiesForTimeRules = availableActivitiesForConditional.filter(
+    (activity) => activity.fieldType === 'datetime' || activity.requireTime || activity.datetimeIncludeTime
+  );
 
   useEffect(() => {
     if (isEditMode && protocolId && visitId && activityId) {
@@ -262,6 +265,8 @@ export const ActivityFormPage: React.FC = () => {
             name: a.name,
             fieldType: a.fieldType,
             options: a.options,
+            requireTime: (a as any).requireTime,
+            datetimeIncludeTime: (a as any).datetimeIncludeTime,
           }));
         setAvailableActivitiesForConditional(activitiesForConditional);
       }
@@ -302,6 +307,8 @@ export const ActivityFormPage: React.FC = () => {
             name: a.name,
             fieldType: a.fieldType,
             options: a.options,
+            requireTime: (a as any).requireTime,
+            datetimeIncludeTime: (a as any).datetimeIncludeTime,
           })) || [];
       setAvailableActivitiesForConditional(activitiesForConditional);
       
@@ -671,6 +678,19 @@ export const ActivityFormPage: React.FC = () => {
       setError('Lista de eventos adversos: agregá al menos una opción de tipo de evento con etiqueta.');
       return;
     }
+    const invalidTimeRule = validationRules.find((rule) => {
+      if (rule.condition !== 'time_between') return false;
+      const hasMin = typeof rule.minMinutes === 'number' && !Number.isNaN(rule.minMinutes);
+      const hasMax = typeof rule.maxMinutes === 'number' && !Number.isNaN(rule.maxMinutes);
+      if (!rule.sourceActivityId) return true;
+      if (!hasMin && !hasMax) return true;
+      if (hasMin && hasMax && (rule.minMinutes as number) > (rule.maxMinutes as number)) return true;
+      return false;
+    });
+    if (invalidTimeRule) {
+      setError('Revisá las reglas de tiempo: actividad origen obligatoria, al menos un límite de minutos y mínimo menor o igual al máximo.');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -711,6 +731,24 @@ export const ActivityFormPage: React.FC = () => {
   const updateValidationRule = (index: number, updates: Partial<ActivityRule>) => {
     const updated = [...validationRules];
     updated[index] = { ...updated[index], ...updates };
+    setValidationRules(updated);
+  };
+
+  const handleValidationConditionChange = (index: number, condition: ActivityRule['condition']) => {
+    const updated = [...validationRules];
+    const current = updated[index];
+    updated[index] = {
+      ...current,
+      condition,
+      minValue: undefined,
+      maxValue: undefined,
+      value: undefined,
+      formula: undefined,
+      sourceActivityId: undefined,
+      minMinutes: undefined,
+      maxMinutes: undefined,
+      formulaOperator: condition === 'formula' ? (current.formulaOperator || '>') : undefined,
+    };
     setValidationRules(updated);
   };
 
@@ -2156,7 +2194,7 @@ export const ActivityFormPage: React.FC = () => {
                         <Select
                           value={rule.condition}
                           label="Condición"
-                          onChange={(e) => updateValidationRule(index, { condition: e.target.value as any })}
+                          onChange={(e) => handleValidationConditionChange(index, e.target.value as ActivityRule['condition'])}
                         >
                           <MenuItem value="min">Valor mínimo</MenuItem>
                           <MenuItem value="max">Valor máximo</MenuItem>
@@ -2164,6 +2202,7 @@ export const ActivityFormPage: React.FC = () => {
                           <MenuItem value="equals">Igual a</MenuItem>
                           <MenuItem value="not_equals">Distinto de</MenuItem>
                           <MenuItem value="formula">Fórmula personalizada</MenuItem>
+                          <MenuItem value="time_between">Tiempo entre actividades</MenuItem>
                         </Select>
                       </FormControl>
 
@@ -2411,6 +2450,48 @@ export const ActivityFormPage: React.FC = () => {
                             </Box>
                           )}
                           </Box>
+                        </Box>
+                      )}
+
+                      {rule.condition === 'time_between' && (
+                        <Box sx={{ width: '100%', display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                          <FormControl size="small" sx={{ minWidth: 280 }}>
+                            <InputLabel>Actividad de referencia</InputLabel>
+                            <Select
+                              value={rule.sourceActivityId || ''}
+                              label="Actividad de referencia"
+                              onChange={(e) => updateValidationRule(index, { sourceActivityId: e.target.value })}
+                            >
+                              {availableActivitiesForTimeRules.length === 0 && (
+                                <MenuItem value="" disabled>
+                                  No hay actividades con hora disponibles
+                                </MenuItem>
+                              )}
+                              {availableActivitiesForTimeRules.map((activity) => (
+                                <MenuItem key={activity.id} value={activity.id}>
+                                  {activity.name}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          <TextField
+                            label="Mínimo (min)"
+                            type="number"
+                            value={rule.minMinutes ?? ''}
+                            onChange={(e) => updateValidationRule(index, { minMinutes: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            onWheel={preventNumberInputScroll}
+                            size="small"
+                            sx={{ width: 150 }}
+                          />
+                          <TextField
+                            label="Máximo (min)"
+                            type="number"
+                            value={rule.maxMinutes ?? ''}
+                            onChange={(e) => updateValidationRule(index, { maxMinutes: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            onWheel={preventNumberInputScroll}
+                            size="small"
+                            sx={{ width: 150 }}
+                          />
                         </Box>
                       )}
                     </Box>

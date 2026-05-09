@@ -26,6 +26,7 @@ import {
   normalizeTime,
   isValidTime,
   addMinutesToTime,
+  getActivityEffectiveTimestamp,
   ActivityFieldRenderer,
   calculateMedicationAdherence,
   detectAdherenceProblems,
@@ -707,27 +708,27 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
       numericValue = Number(value);
     }
     
-    if (numericValue === null) {
-      return { isValid: true };
-    }
-
     for (const rule of activity.validationRules) {
       if (!rule.isActive) continue;
 
       let violated = false;
+      let currentRuleValue: any = numericValue;
 
       switch (rule.condition) {
         case 'min':
+          if (numericValue === null) break;
           if (rule.minValue !== undefined && numericValue < rule.minValue) {
             violated = true;
           }
           break;
         case 'max':
+          if (numericValue === null) break;
           if (rule.maxValue !== undefined && numericValue > rule.maxValue) {
             violated = true;
           }
           break;
         case 'range':
+          if (numericValue === null) break;
           if (rule.minValue !== undefined && rule.maxValue !== undefined) {
             if (numericValue < rule.minValue || numericValue > rule.maxValue) {
               violated = true;
@@ -735,16 +736,19 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
           }
           break;
         case 'equals':
+          if (numericValue === null) break;
           if (rule.value !== undefined && numericValue !== Number(rule.value)) {
             violated = true;
           }
           break;
         case 'not_equals':
+          if (numericValue === null) break;
           if (rule.value !== undefined && numericValue === Number(rule.value)) {
             violated = true;
           }
           break;
         case 'formula':
+          if (numericValue === null) break;
           if (rule.formula) {
             const operator = rule.formulaOperator || '>';
             const formulaResult = evaluateFormula(rule.formula, formValues);
@@ -773,6 +777,41 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             }
           }
           break;
+        case 'time_between': {
+          if (!rule.sourceActivityId) {
+            break;
+          }
+          if (activity.allowMultiple && index === undefined && Array.isArray(value) && value.length > 0) {
+            break;
+          }
+          if (activity.allowMultiple && index !== undefined) {
+            const lastIndex = Array.isArray(value) ? Math.max(value.length - 1, 0) : 0;
+            if (index !== lastIndex) {
+              break;
+            }
+          }
+
+          const sourceActivity = activities.find((a) => a.id === rule.sourceActivityId);
+          if (!sourceActivity) {
+            break;
+          }
+          const sourceTimestamp = getActivityEffectiveTimestamp(sourceActivity, formValues);
+          const targetTimestamp = getActivityEffectiveTimestamp(activity, formValues);
+          if (!sourceTimestamp || !targetTimestamp) {
+            break;
+          }
+
+          const deltaMinutes = (targetTimestamp.getTime() - sourceTimestamp.getTime()) / 60000;
+          currentRuleValue = deltaMinutes;
+
+          if (rule.minMinutes !== undefined && deltaMinutes < rule.minMinutes) {
+            violated = true;
+          }
+          if (rule.maxMinutes !== undefined && deltaMinutes > rule.maxMinutes) {
+            violated = true;
+          }
+          break;
+        }
       }
 
       if (violated) {
@@ -790,7 +829,7 @@ export const PatientVisitForm: React.FC<PatientVisitFormProps> = ({
             activityId: activity.id,
             activityName: activity.name,
             rule: customRule,
-            currentValue: numericValue,
+            currentValue: currentRuleValue,
           },
         };
       }

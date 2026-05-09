@@ -102,6 +102,64 @@ export const parseLocalDate = (dateString: string): Date => {
 };
 
 /**
+ * Obtiene el timestamp efectivo de una actividad para reglas temporales.
+ * Si hay múltiples mediciones con hora, usa la última hora disponible.
+ */
+export const getActivityEffectiveTimestamp = (
+  activity: Activity,
+  formValues: Record<string, any>,
+): Date | null => {
+  const globalDateRaw = formValues[`${activity.id}_date`];
+  const globalDate = typeof globalDateRaw === 'string' ? globalDateRaw : '';
+
+  type Candidate = { index: number; time: string; date?: string };
+  const candidates: Candidate[] = [];
+
+  const globalTimeRaw = formValues[`${activity.id}_time`];
+  if (typeof globalTimeRaw === 'string') {
+    const normalizedGlobalTime = normalizeTime(globalTimeRaw);
+    if (isValidTime(normalizedGlobalTime)) {
+      candidates.push({ index: -1, time: normalizedGlobalTime, date: globalDate });
+    }
+  }
+
+  for (const [key, rawValue] of Object.entries(formValues)) {
+    const match = key.match(new RegExp(`^${activity.id}_time_(\\d+)$`));
+    if (!match || typeof rawValue !== 'string') {
+      continue;
+    }
+    const normalizedTime = normalizeTime(rawValue);
+    if (!isValidTime(normalizedTime)) {
+      continue;
+    }
+    const measurementIndex = Number(match[1]);
+    const measurementDateRaw = formValues[`${activity.id}_date_${measurementIndex}`];
+    const measurementDate = typeof measurementDateRaw === 'string' ? measurementDateRaw : globalDate;
+    candidates.push({
+      index: measurementIndex,
+      time: normalizedTime,
+      date: measurementDate,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((a, b) => a.index - b.index);
+  const lastCandidate = candidates[candidates.length - 1];
+  const [hours, minutes] = lastCandidate.time.split(':').map(Number);
+
+  const baseDate =
+    lastCandidate.date && /^\d{4}-\d{2}-\d{2}$/.test(lastCandidate.date)
+      ? parseLocalDate(lastCandidate.date)
+      : new Date();
+
+  baseDate.setHours(hours, minutes, 0, 0);
+  return baseDate;
+};
+
+/**
  * Abre el date picker nativo al hacer clic en el campo
  */
 export const handleDateFieldClick = (e: React.MouseEvent<HTMLDivElement>) => {

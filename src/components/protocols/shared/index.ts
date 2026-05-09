@@ -5,6 +5,7 @@ export {
   isValidTime,
   addMinutesToTime,
   parseLocalDate,
+  getActivityEffectiveTimestamp,
   getLocalDateStringForInput,
   mergeVisitDateDefaults,
   handleDateFieldClick,
