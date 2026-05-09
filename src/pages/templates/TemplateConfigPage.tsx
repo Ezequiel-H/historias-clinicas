@@ -8,7 +8,6 @@ import {
   IconButton,
   Card,
   CardContent,
-  CardActions,
   Chip,
   Alert,
   CircularProgress,
@@ -22,8 +21,6 @@ import {
   DragIndicator as DragIcon,
   Save as SaveIcon,
   Visibility as PreviewIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
 } from '@mui/icons-material';
 import {
   DndContext,
@@ -46,7 +43,6 @@ import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFiel
 import templateService from '../../services/templateService';
 import { VisitFormPreview } from '../../components/protocols/VisitFormPreview';
 
-// Componente SortableItem para cada Card
 interface SortableItemProps {
   activity: Activity;
   index: number;
@@ -79,57 +75,85 @@ const SortableItem: React.FC<SortableItemProps> = ({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const activeRulesCount =
+    activity.validationRules?.filter((r) => r.isActive).length ?? 0;
+
   return (
     <div ref={setNodeRef} style={style}>
       <Card variant="outlined">
-        <CardContent>
-          <Box display="flex" alignItems="flex-start" gap={2}>
+        <CardContent sx={{ py: 1, px: 2 }}>
+          <Box display="flex" alignItems="flex-start" gap={1}>
             <DragIcon
               sx={{
                 color: 'text.secondary',
                 cursor: 'grab',
-                mt: 0.5,
+                fontSize: 20,
                 '&:active': { cursor: 'grabbing' },
               }}
               {...attributes}
               {...listeners}
             />
-            <Box flex={1}>
-              <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="h6" component="div">
+            <Box flex={1} minWidth={0}>
+              <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                <Typography
+                  variant="subtitle2"
+                  component="div"
+                  fontWeight={600}
+                  noWrap
+                  sx={{ flex: 1, minWidth: 0 }}
+                  title={activity.name}
+                >
                   {index + 1}. {activity.name}
                 </Typography>
+                <Box display="flex" flexShrink={0} alignItems="center">
+                  <IconButton
+                    aria-label="editar pregunta"
+                    onClick={() => onEdit(activity.id)}
+                    disabled={isDragging || isReordering}
+                    size="small"
+                    color="primary"
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    aria-label="eliminar pregunta"
+                    onClick={() => onDelete(activity.id)}
+                    disabled={isDragging || isReordering}
+                    size="small"
+                    color="error"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Box>
+              </Box>
+
+              <Box display="flex" gap={0.75} flexWrap="wrap" alignItems="center">
+                <Chip 
+                  label={getFieldTypeLabel(activity.fieldType)} 
+                  size="small" 
+                  variant="outlined"
+                  sx={{ height: 22 }}
+                />
                 {isExcludedFromClinicalRedactor(activity) && (
                   <Chip 
                     label="Excluido del redactor" 
                     color="warning" 
                     size="small"
-                    sx={{ fontWeight: 'bold' }}
+                    sx={{ fontWeight: 'bold', height: 22 }}
                   />
                 )}
                 {activity.required && (
-                  <Chip label="Requerido" color="error" size="small" />
+                  <Chip label="Requerido" color="error" size="small" sx={{ height: 22 }} />
                 )}
                 {activity.allowMultiple && (
-                  <Chip label="Repetible" color="info" size="small" />
+                  <Chip label="Repetible" color="info" size="small" sx={{ height: 22 }} />
                 )}
-              </Box>
-
-              <Typography variant="body2" color="text.secondary" paragraph>
-                {activity.helpText}
-              </Typography>
-
-              <Box display="flex" gap={1} flexWrap="wrap">
-                <Chip 
-                  label={getFieldTypeLabel(activity.fieldType)} 
-                  size="small" 
-                  variant="outlined"
-                />
                 {activity.measurementUnit && (
                   <Chip 
                     label={`Unidad: ${activity.measurementUnit}`} 
                     size="small" 
                     variant="outlined"
+                    sx={{ height: 22 }}
                   />
                 )}
                 {(activity.expectedMin !== undefined || activity.expectedMax !== undefined) && (
@@ -137,6 +161,7 @@ const SortableItem: React.FC<SortableItemProps> = ({
                     label={`Rango: ${activity.expectedMin !== undefined ? activity.expectedMin : '?'} - ${activity.expectedMax !== undefined ? activity.expectedMax : '?'}`} 
                     size="small" 
                     variant="outlined"
+                    sx={{ height: 22 }}
                   />
                 )}
                 {activity.options && activity.options.length > 0 && (
@@ -144,85 +169,21 @@ const SortableItem: React.FC<SortableItemProps> = ({
                     label={`${activity.options.length} opciones`} 
                     size="small" 
                     variant="outlined"
+                    sx={{ height: 22 }}
+                  />
+                )}
+                {activeRulesCount > 0 && (
+                  <Chip
+                    label={`${activeRulesCount} ${activeRulesCount === 1 ? 'regla' : 'reglas'}`}
+                    size="small"
+                    variant="outlined"
+                    sx={{ height: 22 }}
                   />
                 )}
               </Box>
-
-              {/* Mostrar reglas de validación */}
-              {activity.validationRules && activity.validationRules.length > 0 && (
-                <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="caption" color="text.secondary" fontWeight="bold" display="block" sx={{ mb: 1 }}>
-                    Reglas de Validación ({activity.validationRules.filter(r => r.isActive).length} activa{activity.validationRules.filter(r => r.isActive).length !== 1 ? 's' : ''}):
-                  </Typography>
-                  <Box display="flex" flexDirection="column" gap={1}>
-                    {activity.validationRules.map((rule, ruleIdx) => (
-                      <Box 
-                        key={ruleIdx} 
-                        sx={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: 1,
-                          p: 1,
-                          bgcolor: rule.severity === 'error' ? 'error.light' : 'warning.light',
-                          borderRadius: 1,
-                          opacity: rule.isActive ? 1 : 0.5,
-                        }}
-                      >
-                        {rule.severity === 'error' ? (
-                          <ErrorIcon fontSize="small" sx={{ color: 'error.dark' }} />
-                        ) : (
-                          <WarningIcon fontSize="small" sx={{ color: 'warning.dark' }} />
-                        )}
-                        <Box flex={1}>
-                          <Typography variant="caption" fontWeight="bold" display="block">
-                            {rule.name}
-                            {!rule.isActive && ' (Inactiva)'}
-                          </Typography>
-                          <Typography variant="caption" display="block" sx={{ color: 'text.secondary' }}>
-                            {rule.condition === 'min' && `Mínimo: ${rule.minValue}`}
-                            {rule.condition === 'max' && `Máximo: ${rule.maxValue}`}
-                            {rule.condition === 'range' && `Rango: ${rule.minValue} - ${rule.maxValue}`}
-                            {rule.condition === 'equals' && `Igual a: ${rule.value}`}
-                            {rule.condition === 'not_equals' && `Distinto de: ${rule.value}`}
-                            {rule.condition === 'formula' && `Fórmula: debe ser ${rule.formulaOperator || '>'} (${rule.formula})`}
-                          </Typography>
-                          <Typography variant="caption" display="block" sx={{ fontStyle: 'italic', mt: 0.5 }}>
-                            "{rule.message}"
-                          </Typography>
-                        </Box>
-                        <Chip
-                          label={rule.severity === 'error' ? 'Error' : 'Alerta'}
-                          size="small"
-                          color={rule.severity === 'error' ? 'error' : 'warning'}
-                          variant="filled"
-                        />
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-              )}
             </Box>
           </Box>
         </CardContent>
-        <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
-          <Button
-            size="small"
-            startIcon={<EditIcon />}
-            onClick={() => onEdit(activity.id)}
-            disabled={isDragging || isReordering}
-          >
-            Editar
-          </Button>
-          <Button
-            size="small"
-            color="error"
-            startIcon={<DeleteIcon />}
-            onClick={() => onDelete(activity.id)}
-            disabled={isDragging || isReordering}
-          >
-            Eliminar
-          </Button>
-        </CardActions>
       </Card>
     </div>
   );
@@ -479,7 +440,7 @@ export const TemplateConfigPage: React.FC = () => {
         <Typography variant="h6" gutterBottom>
           Información de la Plantilla
         </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
           <TextField
             label="Nombre de la Plantilla"
             fullWidth
@@ -534,7 +495,7 @@ export const TemplateConfigPage: React.FC = () => {
               items={activities.map((a) => a.id)}
               strategy={verticalListSortingStrategy}
             >
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {activities.map((activity, index) => (
                   <SortableItem
                     key={activity.id}

@@ -28,6 +28,14 @@ import {
   TableHead,
   TableRow,
   TableContainer,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -48,9 +56,11 @@ import {
   Medication as MedicationIcon,
   Notes as NotesIcon,
   ReportProblem as ReportProblemIcon,
+  LibraryBooks as LibraryBooksIcon,
 } from '@mui/icons-material';
-import type { FieldType, SelectOption, ActivityRule, MedicationTrackingConfig } from '../../types';
+import type { FieldType, SelectOption, ActivityRule, MedicationTrackingConfig, Template } from '../../types';
 import protocolService from '../../services/protocolService';
+import templateService from '../../services/templateService';
 import { preventNumberInputScroll } from '../../components/protocols/shared';
 import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 
@@ -198,6 +208,10 @@ export const ActivityFormPage: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
 
   const selectedFieldType = FIELD_TYPES.find(ft => ft.value === formData.fieldType);
@@ -472,6 +486,36 @@ export const ActivityFormPage: React.FC = () => {
       requireTime: isConstant ? false : formData.requireTime,
     });
     setStep('config');
+  };
+
+  const handleOpenImportDialog = async () => {
+    setImportDialogOpen(true);
+    setError('');
+    try {
+      setLoadingTemplates(true);
+      const response = await templateService.getTemplates(1, 100);
+      setTemplates(response.data);
+    } catch (err) {
+      console.error('Error al cargar plantillas:', err);
+      setError('Error al cargar las plantillas');
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleImportTemplate = async (templateId: string) => {
+    try {
+      setImporting(true);
+      setError('');
+      await protocolService.importTemplate(protocolId!, visitId!, templateId);
+      setImportDialogOpen(false);
+      navigate(`/protocols/${protocolId}/visits/${visitId}/edit`);
+    } catch (err) {
+      console.error('Error al importar plantilla:', err);
+      setError('Error al importar la plantilla');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const parseOptions = (text: string): SelectOption[] => {
@@ -821,7 +865,85 @@ export const ActivityFormPage: React.FC = () => {
               </CardActionArea>
             </Card>
           ))}
+          <Card sx={{ height: '100%' }}>
+            <CardActionArea
+              onClick={handleOpenImportDialog}
+              sx={{ height: '100%', p: 2 }}
+            >
+              <CardContent>
+                <Box display="flex" alignItems="center" gap={2} mb={1}>
+                  <Box
+                    sx={{
+                      color: '#3949ab',
+                      bgcolor: '#3949ab20',
+                      p: 1,
+                      borderRadius: 1,
+                      display: 'flex',
+                    }}
+                  >
+                    <LibraryBooksIcon />
+                  </Box>
+                  <Typography variant="h6" component="div">
+                    Importar plantilla
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  Traé todos los campos de una plantilla guardada a esta visita
+                </Typography>
+              </CardContent>
+            </CardActionArea>
+          </Card>
         </Box>
+
+        <Dialog open={importDialogOpen} onClose={() => !importing && setImportDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Importar plantilla</DialogTitle>
+          <DialogContent>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Seleccioná una plantilla para importar sus campos en esta visita. Los campos se agregarán al final de la lista.
+            </Alert>
+            {loadingTemplates ? (
+              <Box display="flex" justifyContent="center" p={3}>
+                <CircularProgress />
+              </Box>
+            ) : templates.length === 0 ? (
+              <Alert severity="warning">
+                No hay plantillas disponibles. Creá una plantilla primero desde el menú de Plantillas.
+              </Alert>
+            ) : (
+              <List>
+                {templates.map((template) => (
+                  <ListItem key={template.id} disablePadding>
+                    <ListItemButton onClick={() => handleImportTemplate(template.id)} disabled={importing}>
+                      <ListItemText
+                        primary={template.name}
+                        secondary={
+                          <>
+                            {template.description && (
+                              <Typography variant="body2" color="text.secondary" component="span" display="block">
+                                {template.description}
+                              </Typography>
+                            )}
+                            <Chip
+                              label={`${template.activities?.length || 0} actividades`}
+                              size="small"
+                              sx={{ mt: 0.5 }}
+                            />
+                          </>
+                        }
+                        secondaryTypographyProps={{ component: 'div' }}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setImportDialogOpen(false)} disabled={importing}>
+              Cancelar
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     );
   }

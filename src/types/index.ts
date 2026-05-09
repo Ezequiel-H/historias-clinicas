@@ -21,21 +21,24 @@ export interface Visit {
   activities: Activity[];
 }
 
-// Tipos de campos disponibles
-export type FieldType = 
-  | 'text_short'           // Texto corto
-  | 'text_long'            // Texto largo (textarea)
-  | 'constant'             // Texto fijo que se incluye en la historia clínica
-  | 'number_simple'        // Número simple
-  | 'number_compound'      // Número compuesto (ej: sistólica/diastólica)
-  | 'select_single'        // Selección (radio/checkbox según selectMultiple)
-  | 'boolean'              // Sí/No
-  | 'datetime'             // Fecha y/o hora (configurable)
-  | 'file'                 // Archivo adjunto
-  | 'conditional'         // Campo condicional
-  | 'calculated'          // Campo calculado (se calcula automáticamente basado en otros campos)
-  | 'medication_tracking' // Seguimiento de medicación
-  | 'adverse_events_list'; // Lista de eventos adversos (options = tipos de evento; UI agrega "Otro")
+// Tipos de campos disponibles — lista única en runtime y tipo TypeScript
+export const FIELD_TYPE_VALUES = [
+  'text_short',
+  'text_long',
+  'constant',
+  'number_simple',
+  'number_compound',
+  'select_single',
+  'boolean',
+  'datetime',
+  'file',
+  'conditional',
+  'calculated',
+  'medication_tracking',
+  'adverse_events_list',
+] as const;
+
+export type FieldType = (typeof FIELD_TYPE_VALUES)[number];
 
 // Configuración de un campo compuesto
 export interface CompoundFieldConfig {

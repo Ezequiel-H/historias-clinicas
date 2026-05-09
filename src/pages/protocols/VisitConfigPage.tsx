@@ -8,7 +8,6 @@ import {
   IconButton,
   Card,
   CardContent,
-  CardActions,
   Chip,
   Alert,
   CircularProgress,
@@ -16,10 +15,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemButton,
   TextField,
   Checkbox,
 } from '@mui/material';
@@ -29,13 +24,10 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   DragIndicator as DragIcon,
-  Save as SaveIcon,
   Visibility as PreviewIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  FileCopy as ImportIcon,
   ContentCopy as CopyIcon,
   ContentPaste as PasteIcon,
+  Checklist as ChecklistIcon,
 } from '@mui/icons-material';
 import {
   DndContext,
@@ -53,13 +45,94 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Visit, Activity, Template } from '../../types';
+import type { Visit, Activity } from '../../types';
+import { FIELD_TYPE_VALUES } from '../../types';
 import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 import protocolService from '../../services/protocolService';
-import templateService from '../../services/templateService';
 import { VisitFormPreview } from '../../components/protocols/VisitFormPreview';
 
-// Componente SortableItem para cada Card
+/** La API aún acepta `select_multiple` en payloads legados (no está en {@link FIELD_TYPE_VALUES}). */
+function isFieldTypeAllowedForPaste(ft: string): boolean {
+  return (FIELD_TYPE_VALUES as readonly string[]).includes(ft) || ft === 'select_multiple';
+}
+
+function normalizePasteConfigs(parsed: unknown): unknown[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    Array.isArray((parsed as Record<string, unknown>).activities)
+  ) {
+    return (parsed as Record<string, unknown>).activities as unknown[];
+  }
+  return [parsed];
+}
+
+function sanitizePastedActivityConfig(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object') {
+    throw new SyntaxError('Cada ítem debe ser un objeto');
+  }
+  const activity = raw as Record<string, unknown>;
+  const { id: _id, visitId: _visitId, order: _order, ...rest } = activity;
+  const out: Record<string, unknown> = { ...rest };
+  if (Array.isArray(out.validationRules)) {
+    out.validationRules = out.validationRules.map((rule: unknown) => {
+      if (!rule || typeof rule !== 'object') return rule;
+      const { id: _ruleId, ...ruleRest } = rule as Record<string, unknown>;
+      return ruleRest;
+    });
+  }
+  return out;
+}
+
+function isCompleteActivityConfigForPaste(o: Record<string, unknown>): boolean {
+  const name = o.name;
+  if (typeof name !== 'string' || !name.trim()) return false;
+  const ft = o.fieldType;
+  if (typeof ft !== 'string' || !isFieldTypeAllowedForPaste(ft)) return false;
+  if (typeof o.required !== 'boolean') return false;
+
+  switch (ft) {
+    case 'constant': {
+      const ct = o.constantText;
+      return typeof ct === 'string' && ct.trim().length > 0;
+    }
+    case 'select_single':
+    case 'adverse_events_list': {
+      const opts = o.options;
+      return Array.isArray(opts) && opts.length > 0;
+    }
+    case 'number_compound': {
+      const cc = o.compoundConfig as { fields?: unknown[] } | undefined;
+      return Array.isArray(cc?.fields) && cc.fields.length > 0;
+    }
+    case 'calculated': {
+      const f = o.calculationFormula;
+      return typeof f === 'string' && f.trim().length > 0;
+    }
+    case 'medication_tracking': {
+      return o.medicationTrackingConfig !== null && typeof o.medicationTrackingConfig === 'object';
+    }
+    case 'conditional': {
+      return o.conditionalConfig !== null && typeof o.conditionalConfig === 'object';
+    }
+    default:
+      return true;
+  }
+}
+
+function tryPreparePasteConfigs(parsed: unknown): Record<string, unknown>[] | null {
+  try {
+    const rawList = normalizePasteConfigs(parsed);
+    if (rawList.length === 0) return null;
+    const sanitized = rawList.map((item) => sanitizePastedActivityConfig(item));
+    if (!sanitized.every(isCompleteActivityConfigForPaste)) return null;
+    return sanitized;
+  } catch {
+    return null;
+  }
+}
+
 interface SortableItemProps {
   activity: Activity;
   index: number;
@@ -100,16 +173,19 @@ const SortableItem: React.FC<SortableItemProps> = ({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const activeRulesCount =
+    activity.validationRules?.filter((r) => r.isActive).length ?? 0;
+
   return (
     <div ref={setNodeRef} style={style}>
       <Card variant="outlined">
-        <CardContent>
-          <Box display="flex" alignItems="flex-start" gap={2}>
+        <CardContent sx={{ py: 1, px: 2 }}>
+          <Box display="flex" alignItems="flex-start" gap={1}>
             <DragIcon
               sx={{
                 color: 'text.secondary',
                 cursor: isMultiSelectMode ? 'default' : 'grab',
-                mt: 0.5,
+                fontSize: 20,
                 '&:active': { cursor: isMultiSelectMode ? 'default' : 'grabbing' },
               }}
               {...(!isMultiSelectMode ? { ...attributes, ...listeners } : {})}
@@ -118,45 +194,80 @@ const SortableItem: React.FC<SortableItemProps> = ({
               <Checkbox
                 checked={isSelected}
                 onChange={() => onToggleSelect(activity.id)}
-                sx={{ mt: -0.5 }}
+                size="small"
+                sx={{ py: 0 }}
               />
             )}
-            <Box flex={1}>
-              <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="h6" component="div">
+            <Box flex={1} minWidth={0}>
+              <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                <Typography
+                  variant="subtitle2"
+                  component="div"
+                  fontWeight={600}
+                  noWrap
+                  sx={{ flex: 1, minWidth: 0 }}
+                  title={activity.name}
+                >
                   {index + 1}. {activity.name}
                 </Typography>
+                <Box display="flex" flexShrink={0} alignItems="center">
+                  <IconButton
+                    aria-label="copiar pregunta"
+                    onClick={() => onCopy(activity)}
+                    disabled={isDragging || isReordering}
+                    size="small"
+                    color="secondary"
+                  >
+                    <CopyIcon />
+                  </IconButton>
+                  <IconButton
+                    aria-label="editar pregunta"
+                    onClick={() => onEdit(activity.id)}
+                    disabled={isDragging || isReordering}
+                    size="small"
+                    color="primary"
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    aria-label="eliminar pregunta"
+                    onClick={() => onDelete(activity.id)}
+                    disabled={isDragging || isReordering}
+                    size="small"
+                    color="error"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Box>
+              </Box>
+
+              <Box display="flex" gap={0.75} flexWrap="wrap" alignItems="center">
+                <Chip
+                  label={getFieldTypeLabel(activity.fieldType)}
+                  size="small"
+                  variant="outlined"
+                  sx={{ height: 22 }}
+                />
                 {isExcludedFromClinicalRedactor(activity) && (
                   <Chip 
                     label="Excluido del redactor" 
                     color="warning" 
                     size="small"
-                    sx={{ fontWeight: 'bold' }}
+                    sx={{ fontWeight: 'bold', height: 22 }}
                   />
                 )}
                 {activity.required && (
-                  <Chip label="Requerido" color="error" size="small" />
+                  <Chip label="Requerido" color="error" size="small" sx={{ height: 22 }} />
                 )}
                 {activity.allowMultiple && (
-                  <Chip label="Repetible" color="info" size="small" />
+                  <Chip label="Repetible" color="info" size="small" sx={{ height: 22 }} />
                 )}
-              </Box>
-
-              <Typography variant="body2" color="text.secondary" paragraph>
-                {activity.helpText}
-              </Typography>
-
-              <Box display="flex" gap={1} flexWrap="wrap">
-                <Chip
-                  label={getFieldTypeLabel(activity.fieldType)}
-                  size="small"
-                  variant="outlined"
-                />
                 {activity.measurementUnit && (
                   <Chip
                     label={`Unidad: ${activity.measurementUnit}`}
                     size="small"
                     variant="outlined"
+                    sx={{ height: 22 }}
                   />
                 )}
                 {(activity.expectedMin !== undefined ||
@@ -173,6 +284,7 @@ const SortableItem: React.FC<SortableItemProps> = ({
                     }`}
                     size="small"
                     variant="outlined"
+                    sx={{ height: 22 }}
                   />
                 )}
                 {activity.options && activity.options.length > 0 && (
@@ -180,144 +292,21 @@ const SortableItem: React.FC<SortableItemProps> = ({
                     label={`${activity.options.length} opciones`}
                     size="small"
                     variant="outlined"
+                    sx={{ height: 22 }}
+                  />
+                )}
+                {activeRulesCount > 0 && (
+                  <Chip
+                    label={`${activeRulesCount} ${activeRulesCount === 1 ? 'regla' : 'reglas'}`}
+                    size="small"
+                    variant="outlined"
+                    sx={{ height: 22 }}
                   />
                 )}
               </Box>
-
-              {/* Mostrar reglas de validación */}
-              {activity.validationRules &&
-                activity.validationRules.length > 0 && (
-                  <Box
-                    sx={{
-                      mt: 2,
-                      pt: 2,
-                      borderTop: '1px solid',
-                      borderColor: 'divider',
-                    }}
-                  >
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      fontWeight="bold"
-                      display="block"
-                      sx={{ mb: 1 }}
-                    >
-                      Reglas de Validación (
-                      {activity.validationRules.filter((r) => r.isActive)
-                        .length}{' '}
-                      activa
-                      {activity.validationRules.filter((r) => r.isActive)
-                        .length !== 1
-                        ? 's'
-                        : ''}
-                      ):
-                    </Typography>
-                    <Box display="flex" flexDirection="column" gap={1}>
-                      {activity.validationRules.map((rule, ruleIdx) => (
-                        <Box
-                          key={ruleIdx}
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1,
-                            p: 1,
-                            bgcolor:
-                              rule.severity === 'error'
-                                ? 'error.light'
-                                : 'warning.light',
-                            borderRadius: 1,
-                            opacity: rule.isActive ? 1 : 0.5,
-                          }}
-                        >
-                          {rule.severity === 'error' ? (
-                            <ErrorIcon
-                              fontSize="small"
-                              sx={{ color: 'error.dark' }}
-                            />
-                          ) : (
-                            <WarningIcon
-                              fontSize="small"
-                              sx={{ color: 'warning.dark' }}
-                            />
-                          )}
-                          <Box flex={1}>
-                            <Typography
-                              variant="caption"
-                              fontWeight="bold"
-                              display="block"
-                            >
-                              {rule.name}
-                              {!rule.isActive && ' (Inactiva)'}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              display="block"
-                              sx={{ color: 'text.secondary' }}
-                            >
-                              {rule.condition === 'min' &&
-                                `Mínimo: ${rule.minValue}`}
-                              {rule.condition === 'max' &&
-                                `Máximo: ${rule.maxValue}`}
-                              {rule.condition === 'range' &&
-                                `Rango: ${rule.minValue} - ${rule.maxValue}`}
-                              {rule.condition === 'equals' &&
-                                `Igual a: ${rule.value}`}
-                              {rule.condition === 'not_equals' &&
-                                `Distinto de: ${rule.value}`}
-                              {rule.condition === 'formula' &&
-                                `Fórmula: debe ser ${rule.formulaOperator || '>'} (${rule.formula})`}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              display="block"
-                              sx={{ fontStyle: 'italic', mt: 0.5 }}
-                            >
-                              "{rule.message}"
-                            </Typography>
-                          </Box>
-                          <Chip
-                            label={rule.severity === 'error' ? 'Error' : 'Alerta'}
-                            size="small"
-                            color={rule.severity === 'error' ? 'error' : 'warning'}
-                            variant="filled"
-                          />
-                        </Box>
-                      ))}
-                    </Box>
-                  </Box>
-                )}
             </Box>
           </Box>
         </CardContent>
-        <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
-          <IconButton
-            aria-label="copiar pregunta"
-            onClick={() => onCopy(activity)}
-            disabled={isDragging || isReordering}
-            size="small"
-            color="secondary"
-          >
-            <CopyIcon />
-          </IconButton>
-          <IconButton
-            aria-label="editar pregunta"
-            onClick={() => onEdit(activity.id)}
-            disabled={isDragging || isReordering}
-            size="small"
-            color="primary"
-          >
-            <EditIcon />
-          </IconButton>
-          <IconButton
-            aria-label="eliminar pregunta"
-            onClick={() => onDelete(activity.id)}
-            disabled={isDragging || isReordering}
-            size="small"
-            color="error"
-          >
-            <DeleteIcon />
-          </IconButton>
-        </CardActions>
       </Card>
     </div>
   );
@@ -328,14 +317,11 @@ export const VisitConfigPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [visit, setVisit] = useState<Visit | null>(null);
+  const [protocolName, setProtocolName] = useState('');
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [loadingTemplates, setLoadingTemplates] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
   const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
   const [pasteJson, setPasteJson] = useState('');
@@ -363,6 +349,7 @@ export const VisitConfigPage: React.FC = () => {
       
       const response = await protocolService.getProtocolById(protocolId!);
       const protocol = response.data;
+      setProtocolName(protocol.name);
       
       const visitData = protocol.visits.find((v) => v.id === visitId);
       
@@ -450,18 +437,71 @@ export const VisitConfigPage: React.FC = () => {
     }
   };
 
-  const handleOpenPasteDialog = async () => {
-    setPasteDialogOpen(true);
+  const handlePasteQuestionClick = async () => {
+    setError('');
+    let clipboardText = '';
     try {
       if (!navigator.clipboard?.readText) {
+        setPasteJson('');
+        setPasteDialogOpen(true);
+        setError(
+          'Tu navegador no permite leer el portapapeles automáticamente. Pegá el JSON manualmente en el cuadro.'
+        );
         return;
       }
-      const clipboardText = await navigator.clipboard.readText();
-      if (clipboardText?.trim()) {
-        setPasteJson(clipboardText);
-      }
+      clipboardText = await navigator.clipboard.readText();
     } catch (err) {
       console.error('No se pudo leer el portapapeles:', err);
+      setPasteJson('');
+      setPasteDialogOpen(true);
+      setError('No se pudo leer el portapapeles. Pegá el JSON manualmente.');
+      return;
+    }
+
+    const trimmed = clipboardText?.trim() ?? '';
+    if (!trimmed) {
+      setPasteJson('');
+      setPasteDialogOpen(true);
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      setPasteJson(trimmed);
+      setPasteDialogOpen(true);
+      return;
+    }
+
+    const prepared = tryPreparePasteConfigs(parsed);
+    if (!prepared) {
+      setPasteJson(trimmed);
+      setPasteDialogOpen(true);
+      return;
+    }
+
+    try {
+      setPasting(true);
+      setError('');
+      for (let index = 0; index < prepared.length; index += 1) {
+        const activityData = {
+          ...prepared[index],
+          order: activities.length + index + 1,
+        };
+        await protocolService.addActivity(protocolId!, visitId!, activityData);
+      }
+      await loadVisitData();
+      setPasteJson('');
+    } catch (err) {
+      console.error('Error al pegar configuración:', err);
+      setPasteJson(trimmed);
+      setPasteDialogOpen(true);
+      setError(
+        'El JSON parecía válido pero no se pudo crear la pregunta. Revisá el contenido o probá desde el cuadro de texto.'
+      );
+    } finally {
+      setPasting(false);
     }
   };
 
@@ -475,11 +515,13 @@ export const VisitConfigPage: React.FC = () => {
       setPasting(true);
       setError('');
       const parsedConfig = JSON.parse(pasteJson);
-      const configsToCreate = Array.isArray(parsedConfig)
-        ? parsedConfig
-        : Array.isArray(parsedConfig?.activities)
-          ? parsedConfig.activities
-          : [parsedConfig];
+      let configsToCreate: Record<string, unknown>[];
+      try {
+        configsToCreate = normalizePasteConfigs(parsedConfig).map(sanitizePastedActivityConfig);
+      } catch {
+        setError('El JSON debe contener uno o más objetos de actividad válidos.');
+        return;
+      }
 
       if (configsToCreate.length === 0) {
         setError('No hay preguntas para pegar en el JSON.');
@@ -525,40 +567,6 @@ export const VisitConfigPage: React.FC = () => {
     } catch (err) {
       console.error('Error al eliminar actividad:', err);
       setError('Error al eliminar el campo');
-    }
-  };
-
-  const handleSave = () => {
-    navigate(`/protocols/${protocolId}/edit`);
-  };
-
-  const handleOpenImportDialog = async () => {
-    setImportDialogOpen(true);
-    try {
-      setLoadingTemplates(true);
-      const response = await templateService.getTemplates(1, 100);
-      setTemplates(response.data);
-    } catch (err) {
-      console.error('Error al cargar plantillas:', err);
-      setError('Error al cargar las plantillas');
-    } finally {
-      setLoadingTemplates(false);
-    }
-  };
-
-  const handleImportTemplate = async (templateId: string) => {
-    try {
-      setImporting(true);
-      setError('');
-      await protocolService.importTemplate(protocolId!, visitId!, templateId);
-      // Recargar los datos de la visita
-      await loadVisitData();
-      setImportDialogOpen(false);
-    } catch (err) {
-      console.error('Error al importar plantilla:', err);
-      setError('Error al importar la plantilla');
-    } finally {
-      setImporting(false);
     }
   };
 
@@ -646,15 +654,6 @@ export const VisitConfigPage: React.FC = () => {
         </Alert>
       )}
 
-      <Box display="flex" justifyContent="flex-end" mb={2}>
-        <Button
-          variant={isMultiSelectMode ? 'contained' : 'outlined'}
-          onClick={toggleMultiSelectMode}
-        >
-          {isMultiSelectMode ? 'Cancelar selección múltiple' : 'Seleccionar múltiples preguntas'}
-        </Button>
-      </Box>
-
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
@@ -663,22 +662,14 @@ export const VisitConfigPage: React.FC = () => {
           </IconButton>
           <Box>
             <Typography variant="h4" fontWeight="bold">
-              Configurar Campos de Visita
+              {visit?.name ?? 'Cargando...'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {visit?.name || 'Cargando...'}
+              {protocolName || 'Cargando...'}
             </Typography>
           </Box>
         </Box>
         <Box display="flex" gap={2}>
-          <Button
-            variant="outlined"
-            startIcon={<ImportIcon />}
-            onClick={handleOpenImportDialog}
-            size="large"
-          >
-            Importar Plantilla
-          </Button>
           {activities.length > 0 && (
             <Button
               variant="outlined"
@@ -686,41 +677,59 @@ export const VisitConfigPage: React.FC = () => {
               onClick={() => setPreviewOpen(true)}
               size="large"
             >
-              Preview Formulario
+              Preview
             </Button>
           )}
-        <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
-          onClick={handleSave}
-          size="large"
-        >
-          Guardar y Volver
-        </Button>
+          <Button
+            variant={isMultiSelectMode ? 'contained' : 'outlined'}
+            startIcon={<ChecklistIcon />}
+            onClick={toggleMultiSelectMode}
+            size="large"
+          >
+            {isMultiSelectMode ? 'Cancelar' : 'Seleccionar'}
+          </Button>
         </Box>
       </Box>
 
       {/* Botón principal para agregar */}
       <Paper sx={{ p: 3, mb: 3, textAlign: 'center', bgcolor: 'primary.light' }}>
-        <Typography variant="h6" gutterBottom>
-          {activities.length === 0 ? '¡Empezá agregando el primer campo!' : 'Agregá más campos'}
-        </Typography>
-        <Box display="flex" justifyContent="center" gap={2} flexWrap="wrap" sx={{ mt: 2 }}>
+        <Box display="flex" justifyContent="center" gap={2} flexWrap="wrap">
           <Button
             variant="contained"
             size="large"
             startIcon={<AddIcon />}
             onClick={handleAddActivity}
           >
-            Agregar Campo / Pregunta
+            Agregar pregunta
           </Button>
           <Button
             variant="outlined"
             size="large"
             startIcon={<PasteIcon />}
-            onClick={handleOpenPasteDialog}
+            onClick={handlePasteQuestionClick}
+            disabled={pasting}
+            sx={{
+              borderWidth: 2,
+              borderStyle: 'solid',
+              borderColor: 'primary.dark',
+              color: 'common.white',
+              bgcolor: 'primary.main',
+              '& .MuiButton-startIcon': {
+                color: 'inherit',
+              },
+              '&:hover': {
+                color: 'common.white',
+                bgcolor: 'primary.dark',
+                borderColor: 'primary.dark',
+              },
+              '&:disabled': {
+                color: 'grey.500',
+                borderColor: 'action.disabled',
+                bgcolor: 'action.disabledBackground',
+              },
+            }}
           >
-            Pegar pregunta
+            Pegar
           </Button>
         </Box>
       </Paper>
@@ -761,7 +770,7 @@ export const VisitConfigPage: React.FC = () => {
               items={activities.map((a) => a.id)}
               strategy={verticalListSortingStrategy}
             >
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {activities.map((activity, index) => (
                   <SortableItem
                     key={activity.id}
@@ -817,57 +826,6 @@ export const VisitConfigPage: React.FC = () => {
         protocolId={protocolId}
         visitId={visitId}
       />
-
-      {/* Dialog para importar plantilla */}
-      <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Importar Plantilla</DialogTitle>
-        <DialogContent>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Seleccioná una plantilla para importar sus campos en esta visita. Los campos se agregarán al final de la lista.
-          </Alert>
-          {loadingTemplates ? (
-            <Box display="flex" justifyContent="center" p={3}>
-              <CircularProgress />
-            </Box>
-          ) : templates.length === 0 ? (
-            <Alert severity="warning">
-              No hay plantillas disponibles. Creá una plantilla primero desde el menú de Plantillas.
-            </Alert>
-          ) : (
-            <List>
-              {templates.map((template) => (
-                <ListItem key={template.id} disablePadding>
-                  <ListItemButton onClick={() => handleImportTemplate(template.id)} disabled={importing}>
-                    <ListItemText
-                      primary={template.name}
-                      secondary={
-                        <>
-                          {template.description && (
-                            <Typography variant="body2" color="text.secondary" component="span" display="block">
-                              {template.description}
-                            </Typography>
-                          )}
-                          <Chip
-                            label={`${template.activities?.length || 0} actividades`}
-                            size="small"
-                            sx={{ mt: 0.5 }}
-                          />
-                        </>
-                      }
-                      secondaryTypographyProps={{ component: 'div' }}
-                    />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setImportDialogOpen(false)} disabled={importing}>
-            Cancelar
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Dialog para pegar configuración JSON */}
       <Dialog
