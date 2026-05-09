@@ -29,13 +29,13 @@ export const FIELD_TYPE_VALUES = [
   'number_simple',
   'number_compound',
   'select_single',
-  'boolean',
   'datetime',
-  'file',
-  'conditional',
-  'calculated',
   'medication_tracking',
   'adverse_events_list',
+  'conditional',
+  'calculated',
+  'boolean',
+  'file',
 ] as const;
 
 export type FieldType = (typeof FIELD_TYPE_VALUES)[number];

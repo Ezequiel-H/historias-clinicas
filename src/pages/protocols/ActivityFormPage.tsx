@@ -40,116 +40,23 @@ import {
 import {
   ArrowBack as BackIcon,
   Save as SaveIcon,
-  TextFields as TextIcon,
-  Numbers as NumberIcon,
-  ToggleOn as ToggleIcon,
-  CalendarToday as DateIcon,
-  AttachFile as FileIcon,
-  CheckBox as CheckboxIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
   CheckCircle as CheckCircleIcon,
-  Code as CodeIcon,
   Link as LinkIcon,
-  Medication as MedicationIcon,
-  Notes as NotesIcon,
-  ReportProblem as ReportProblemIcon,
   LibraryBooks as LibraryBooksIcon,
 } from '@mui/icons-material';
 import type { FieldType, SelectOption, ActivityRule, MedicationTrackingConfig, Template } from '../../types';
+import {
+  FIELD_TYPE_ACTIVITY_FORM_CARDS,
+  FIELD_TYPE_FORM_OPTIONS,
+} from '../../constants/fieldTypeFormOptions';
 import protocolService from '../../services/protocolService';
 import templateService from '../../services/templateService';
 import { preventNumberInputScroll } from '../../components/protocols/shared';
 import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
-
-const FIELD_TYPES = [
-  {
-    value: 'text_short' as FieldType,
-    label: 'Texto Corto',
-    description: 'Campo de texto de una línea',
-    icon: <TextIcon />,
-    color: '#1976d2',
-  },
-  {
-    value: 'text_long' as FieldType,
-    label: 'Texto Largo',
-    description: 'Área de texto multilínea (observaciones)',
-    icon: <TextIcon />,
-    color: '#1565c0',
-  },
-  {
-    value: 'constant' as FieldType,
-    label: 'Constante',
-    description: 'Texto fijo que se envía a la historia clínica sin pedir respuesta al médico',
-    icon: <NotesIcon />,
-    color: '#5d4037',
-  },
-  {
-    value: 'number_simple' as FieldType,
-    label: 'Número Simple',
-    description: 'Campo numérico (peso, temperatura)',
-    icon: <NumberIcon />,
-    color: '#2e7d32',
-  },
-  {
-    value: 'number_compound' as FieldType,
-    label: 'Número Compuesto',
-    description: 'Ej: Presión (Sistólica/Diastólica)',
-    icon: <NumberIcon />,
-    color: '#43a047',
-  },
-  {
-    value: 'select_single' as FieldType,
-    label: 'Selección',
-    description: 'Lista de opciones (configurable: única o múltiple)',
-    icon: <CheckboxIcon />,
-    color: '#7b1fa2',
-  },
-  {
-    value: 'boolean' as FieldType,
-    label: 'Sí/No',
-    description: 'Campo booleano simple',
-    icon: <ToggleIcon />,
-    color: '#f57c00',
-  },
-  {
-    value: 'datetime' as FieldType,
-    label: 'Fecha y/o Hora',
-    description: 'Selector de fecha, hora o ambos (configurable)',
-    icon: <DateIcon />,
-    color: '#0288d1',
-  },
-  {
-    value: 'file' as FieldType,
-    label: 'Archivo Adjunto',
-    description: 'Subir PDF, imagen, etc.',
-    icon: <FileIcon />,
-    color: '#d32f2f',
-  },
-  {
-    value: 'calculated' as FieldType,
-    label: 'Campo Calculado',
-    description: 'Se calcula automáticamente basado en otros campos',
-    icon: <CodeIcon />,
-    color: '#d32f2f',
-  },
-  {
-    value: 'medication_tracking' as FieldType,
-    label: 'Seguimiento de Medicación',
-    description: 'Registro y cálculo de adherencia al tratamiento (pill count)',
-    icon: <MedicationIcon />,
-    color: '#ed6c02',
-  },
-  {
-    value: 'adverse_events_list' as FieldType,
-    label: 'Lista de eventos adversos',
-    description: 'Varios eventos con tipo, fechas, seriedad, intensidad y relación con estudio',
-    icon: <ReportProblemIcon />,
-    color: '#c62828',
-  },
-];
 
 export const ActivityFormPage: React.FC = () => {
   const { protocolId, visitId, activityId } = useParams<{ 
@@ -214,7 +121,7 @@ export const ActivityFormPage: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
 
-  const selectedFieldType = FIELD_TYPES.find(ft => ft.value === formData.fieldType);
+  const selectedFieldType = FIELD_TYPE_FORM_OPTIONS.find((ft) => ft.value === formData.fieldType);
   const availableActivitiesForTimeRules = availableActivitiesForConditional.filter(
     (activity) => activity.fieldType === 'datetime' || activity.requireTime || activity.datetimeIncludeTime
   );
@@ -834,31 +741,44 @@ export const ActivityFormPage: React.FC = () => {
           Elegí el tipo de campo/pregunta que querés agregar a esta visita
         </Alert>
 
-        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' } }}>
-          {FIELD_TYPES.map((fieldType) => (
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 1.5,
+            gridTemplateColumns: {
+              xs: '1fr',
+              md: 'repeat(2, 1fr)',
+              lg: 'repeat(4, 1fr)',
+            },
+          }}
+        >
+          {FIELD_TYPE_ACTIVITY_FORM_CARDS.map((fieldType) => (
             <Card key={fieldType.value} sx={{ height: '100%' }}>
-              <CardActionArea 
+              <CardActionArea
                 onClick={() => handleSelectType(fieldType.value)}
                 sx={{ height: '100%', p: 2 }}
               >
-                <CardContent>
-                  <Box display="flex" alignItems="center" gap={2} mb={1}>
-                    <Box 
-                      sx={{ 
-                        color: fieldType.color, 
+                <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+                  <Box display="flex" alignItems="center" gap={1.75} mb={1}>
+                    <Box
+                      sx={{
+                        color: fieldType.color,
                         bgcolor: `${fieldType.color}20`,
                         p: 1,
                         borderRadius: 1,
                         display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        '& .MuiSvgIcon-root': { fontSize: 22 },
                       }}
                     >
                       {fieldType.icon}
                     </Box>
-                    <Typography variant="h6" component="div">
+                    <Typography variant="subtitle1" component="div" fontWeight={600}>
                       {fieldType.label}
                     </Typography>
                   </Box>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.35 }}>
                     {fieldType.description}
                   </Typography>
                 </CardContent>
@@ -866,12 +786,9 @@ export const ActivityFormPage: React.FC = () => {
             </Card>
           ))}
           <Card sx={{ height: '100%' }}>
-            <CardActionArea
-              onClick={handleOpenImportDialog}
-              sx={{ height: '100%', p: 2 }}
-            >
-              <CardContent>
-                <Box display="flex" alignItems="center" gap={2} mb={1}>
+            <CardActionArea onClick={handleOpenImportDialog} sx={{ height: '100%', p: 2 }}>
+              <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+                <Box display="flex" alignItems="center" gap={1.75} mb={1}>
                   <Box
                     sx={{
                       color: '#3949ab',
@@ -879,15 +796,18 @@ export const ActivityFormPage: React.FC = () => {
                       p: 1,
                       borderRadius: 1,
                       display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      '& .MuiSvgIcon-root': { fontSize: 22 },
                     }}
                   >
                     <LibraryBooksIcon />
                   </Box>
-                  <Typography variant="h6" component="div">
+                  <Typography variant="subtitle1" component="div" fontWeight={600}>
                     Importar plantilla
                   </Typography>
                 </Box>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.35 }}>
                   Traé todos los campos de una plantilla guardada a esta visita
                 </Typography>
               </CardContent>
@@ -1773,7 +1693,7 @@ export const ActivityFormPage: React.FC = () => {
                         ) : (
                           availableActivitiesForConditional.map((activity) => (
                             <MenuItem key={activity.id} value={activity.id}>
-                              {activity.name} ({FIELD_TYPES.find(ft => ft.value === activity.fieldType)?.label || activity.fieldType})
+                              {activity.name} ({FIELD_TYPE_FORM_OPTIONS.find(ft => ft.value === activity.fieldType)?.label || activity.fieldType})
                             </MenuItem>
                           ))
                         )}

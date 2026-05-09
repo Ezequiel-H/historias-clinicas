@@ -30,6 +30,7 @@ import {
   DragIndicator as DragIcon,
 } from '@mui/icons-material';
 import type { Activity, FieldType, SelectOption, Visit, MedicationTrackingConfig } from '../../types';
+import { FIELD_TYPE_SELECT_OPTIONS } from '../../constants/fieldTypeFormOptions';
 import { isExcludedFromClinicalRedactor } from '../../utils/clinicalRedactorFields';
 import { preventNumberInputScroll } from './shared';
 
@@ -51,21 +52,6 @@ interface ActivityFormData {
   options?: SelectOption[];
   excludeFromRedactor?: boolean;
 }
-
-const FIELD_TYPES: { value: FieldType; label: string; description: string }[] = [
-  { value: 'text_short', label: 'Texto Corto', description: 'Campo de texto de una línea' },
-  { value: 'text_long', label: 'Texto Largo', description: 'Área de texto multilínea' },
-  { value: 'constant', label: 'Constante', description: 'Texto fijo para incluir automáticamente en la historia clínica' },
-  { value: 'number_simple', label: 'Número Simple', description: 'Campo numérico' },
-  { value: 'number_compound', label: 'Número Compuesto', description: 'Ej: Sistólica/Diastólica' },
-  { value: 'select_single', label: 'Selección', description: 'Lista de opciones (configurable: única o múltiple)' },
-  { value: 'boolean', label: 'Sí/No', description: 'Campo booleano' },
-  { value: 'datetime', label: 'Fecha y/o Hora', description: 'Selector de fecha, hora o ambos (configurable)' },
-  { value: 'file', label: 'Archivo Adjunto', description: 'Subir archivo (PDF, imagen, etc.)' },
-  { value: 'conditional', label: 'Campo Condicional', description: 'Se muestra según otra respuesta' },
-  { value: 'medication_tracking', label: 'Seguimiento de Medicación', description: 'Registro y cálculo de adherencia al tratamiento (pill count)' },
-  { value: 'adverse_events_list', label: 'Lista de eventos adversos', description: 'Tipos configurables + Otro; fechas, seriedad, intensidad y relación con estudio' },
-];
 
 export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, onSave }) => {
   const [activities, setActivities] = useState<Activity[]>(visit.activities || []);
@@ -235,7 +221,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
   };
 
   const getFieldTypeLabel = (type: FieldType) => {
-    return FIELD_TYPES.find(ft => ft.value === type)?.label || type;
+    return FIELD_TYPE_SELECT_OPTIONS.find(ft => ft.value === type)?.label || type;
   };
 
   const sortedActivities = [...activities].sort((a, b) => a.order - b.order);
@@ -409,7 +395,7 @@ export const ActivityEditor: React.FC<ActivityEditorProps> = ({ visit, onClose, 
                   });
                 }}
               >
-                {FIELD_TYPES.map((ft) => (
+                {FIELD_TYPE_SELECT_OPTIONS.map((ft) => (
                   <MenuItem key={ft.value} value={ft.value}>
                     <Box>
                       <Typography variant="body2">{ft.label}</Typography>

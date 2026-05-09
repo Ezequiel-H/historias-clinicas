@@ -2,6 +2,8 @@ import type { Protocol, ProtocolFormData, ApiResponse, PaginatedResponse } from 
 import apiService from './api';
 import axios from 'axios';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+
 class ProtocolService {
   // Obtener todos los protocolos (paginado)
   async getProtocols(page = 1, pageSize = 10, status?: string): Promise<PaginatedResponse<Protocol>> {
@@ -85,7 +87,6 @@ class ProtocolService {
 
   // Previsualizar texto de historia clínica con el redactor (sin generar PDF)
   async previewClinicalHistory(protocolId: string, visitId: string, visitData: any): Promise<string> {
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
     const token = localStorage.getItem('authToken');
 
     const response = await axios.post(
@@ -109,7 +110,6 @@ class ProtocolService {
     visitData: any,
     clinicalHistoryText?: string
   ): Promise<Blob> {
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
     const token = localStorage.getItem('authToken');
 
     const response = await axios.post(
@@ -185,7 +185,6 @@ class ProtocolService {
     file: File,
     onProgress?: (progress: number) => void
   ): Promise<ApiResponse<Protocol>> {
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
     const token = localStorage.getItem('authToken');
 
     const formData = new FormData();
